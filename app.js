@@ -10,8 +10,8 @@ const FILES = {
 };
 
 const COLORS = [
-    '#6366f1', '#8b5cf6', '#a855f7', '#06b6d4', '#10b981',
-    '#f43f5e', '#f59e0b', '#0ea5e9', '#ec4899', '#14b8a6'
+    '#2563eb', '#059669', '#dc2626', '#7c3aed', '#ea580c',
+    '#0891b2', '#be185d', '#4f46e5', '#65a30d', '#0d9488'
 ];
 
 const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
@@ -333,15 +333,21 @@ function renderChart() {
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 } }
+                    labels: {
+                        color: '#6b7280',
+                        font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', size: 12 },
+                        usePointStyle: true,
+                        padding: 16
+                    }
                 },
                 tooltip: {
-                    backgroundColor: '#1a1a2e',
-                    titleColor: '#f8fafc',
-                    bodyColor: '#94a3b8',
-                    borderColor: '#6366f1',
+                    backgroundColor: '#1f2937',
+                    titleColor: '#ffffff',
+                    bodyColor: '#e5e7eb',
+                    borderColor: '#374151',
                     borderWidth: 1,
                     padding: 12,
+                    cornerRadius: 6,
                     callbacks: {
                         label: (context) => {
                             let label = context.dataset.label || '';
@@ -366,17 +372,19 @@ function renderChart() {
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#64748b' }
+                    grid: { color: '#f3f4f6' },
+                    ticks: { color: '#6b7280', font: { size: 11 } },
+                    border: { color: '#e5e7eb' }
                 },
                 y: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#64748b' },
-                    title: { display: true, text: yAxisLabel, color: '#94a3b8' }
+                    grid: { color: '#f3f4f6' },
+                    ticks: { color: '#6b7280', font: { size: 11 } },
+                    border: { color: '#e5e7eb' },
+                    title: { display: true, text: yAxisLabel, color: '#6b7280', font: { size: 12, weight: '500' } }
                 }
             },
             animations: {
-                y: { duration: 500 }
+                y: { duration: 300 }
             }
         }
     });
@@ -476,12 +484,14 @@ function renderMap() {
         }
     });
 
-    // Use logarithmic scale for colors since GDP vary wildly
+    // Use logarithmic scale for sequential blue palette
     const colorScale = (val) => {
-        if (val === null) return '#1a1a2e';
+        if (val === null) return '#f3f4f6';
         const normalized = Math.log(val) / Math.log(max);
-        // HSL Interpolation from Blue to Red
-        return `hsl(${220 - normalized * 220}, 70%, 50%)`;
+        // Sequential blue scale
+        const colors = ['#f0f9ff', '#bae6fd', '#38bdf8', '#0284c7', '#075985'];
+        const idx = Math.min(Math.floor(normalized * colors.length), colors.length - 1);
+        return colors[idx];
     };
 
     document.getElementById('minValue').textContent = `$${Math.round(min).toLocaleString()}`;
@@ -513,7 +523,7 @@ function renderMap() {
         });
 
         path.addEventListener('mouseleave', () => {
-            path.style.stroke = "rgba(255,255,255,0.1)";
+            path.style.stroke = "#e5e7eb";
             tooltip.classList.remove('visible');
         });
 
