@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive GDP Visualization Tool - Compare GDP per capita and PPP across 260+ countries with interactive charts and world map visualization">
+    <title>Global GDP Explorer | Economic Data Visualization</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <h1>Global GDP Explorer</h1>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <span class="stat-value" id="countryCount">0</span>
+                        <span class="stat-label">Countries</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="yearRange">1960-2024</span>
+                        <span class="stat-label">Data Range</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Control Panel -->
+            <section class="control-panel">
+                <div class="control-group">
+                    <label class="control-label">View Mode</label>
+                    <div class="view-mode-selector">
+                        <button class="view-btn active" data-view="gdp" id="viewGdp">
+                            <span class="btn-icon">📊</span>
+                            GDP (USD)
+                        </button>
+                        <button class="view-btn" data-view="ppp" id="viewPpp">
+                            <span class="btn-icon">💱</span>
+                            PPP
+                        </button>
+                        <button class="view-btn" data-view="compare" id="viewCompare">
+                            <span class="btn-icon">⚖️</span>
+                            Compare
+                        </button>
+                        <button class="view-btn" data-view="ratio" id="viewRatio">
+                            <span class="btn-icon">📈</span>
+                            Ratio
+                        </button>
+                        <button class="view-btn" data-view="map" id="viewMap">
+                            <span class="btn-icon">🗺️</span>
+                            Map
+                        </button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label" for="countrySelect">Select Countries</label>
+                    <div class="country-selector">
+                        <select id="countrySelect" multiple>
+                            <!-- Countries will be populated dynamically -->
+                        </select>
+                        <div class="selected-countries" id="selectedCountries">
+                            <!-- Selected country chips will appear here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group year-controls">
+                    <label class="control-label">Year Range</label>
+                    <div class="year-range-container">
+                        <input type="range" id="yearStart" min="1960" max="2024" value="1990" class="year-slider">
+                        <input type="range" id="yearEnd" min="1960" max="2024" value="2024" class="year-slider">
+                        <div class="year-display">
+                            <span id="yearStartDisplay">1990</span>
+                            <span class="year-separator">—</span>
+                            <span id="yearEndDisplay">2024</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group" id="mapYearControl" style="display: none;">
+                    <label class="control-label">Map Year</label>
+                    <div class="map-year-container">
+                        <input type="range" id="mapYear" min="1960" max="2024" value="2023" class="year-slider single">
+                        <span id="mapYearDisplay" class="year-value">2023</span>
+                        <button id="playBtn" class="play-button">▶️ Play</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Visualization Area -->
+            <section class="visualization-area">
+                <!-- Chart Container -->
+                <div class="chart-container" id="chartContainer">
+                    <div class="chart-header">
+                        <h2 class="chart-title" id="chartTitle">GDP per Capita (Constant 2015 US$)</h2>
+                        <div class="chart-actions">
+                            <button class="action-btn" id="downloadChart" title="Download Chart">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                            </button>
+                            <button class="action-btn" id="resetZoom" title="Reset Zoom">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Map Container -->
+                <div class="map-container" id="mapContainer" style="display: none;">
+                    <div class="chart-header">
+                        <h2 class="chart-title" id="mapTitle">World GDP Map</h2>
+                        <div class="map-legend" id="mapLegend">
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #1a1a2e;"></span>
+                                <span>No Data</span>
+                            </div>
+                            <div class="legend-gradient">
+                                <div class="gradient-bar"></div>
+                                <div class="gradient-labels">
+                                    <span id="minValue">$0</span>
+                                    <span id="maxValue">$100k+</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="map-wrapper" id="mapWrapper">
+                        <svg id="worldMap" viewBox="0 0 1000 500"></svg>
+                        <div class="map-tooltip" id="mapTooltip"></div>
+                    </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="data-table-container" id="dataTableContainer">
+                    <div class="table-header">
+                        <h3>Data Summary</h3>
+                        <button class="action-btn" id="exportData" title="Export Data">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                                <polyline points="10 9 9 9 8 9"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="dataTable">
+                            <thead>
+                                <tr>
+                                    <th>Country</th>
+                                    <th>Latest GDP (USD)</th>
+                                    <th>Latest PPP</th>
+                                    <th>GDP/PPP Ratio</th>
+                                    <th>Growth (5yr)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTableBody">
+                                <!-- Data will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Insights Panel -->
+            <aside class="insights-panel">
+                <div class="insight-card">
+                    <h3 class="insight-title">📊 Key Insights</h3>
+                    <div class="insight-content" id="insightsContent">
+                        <p class="insight-text">Select countries to view comparative insights and analysis.</p>
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <h3 class="insight-title">🔥 Top Performers</h3>
+                    <div class="top-performers" id="topPerformers">
+                        <!-- Will be populated dynamically -->
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <h3 class="insight-title">📉 Growth Trends</h3>
+                    <div class="growth-trends" id="growthTrends">
+                        <!-- Will be populated dynamically -->
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Data Source: <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Development Indicators</a> | Last Updated: December 2025</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loader">
+            <div class="loader-ring"></div>
+            <span>Loading Economic Data...</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
