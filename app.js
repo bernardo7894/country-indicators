@@ -184,6 +184,8 @@ function setupEventListeners() {
                 document.getElementById('mapYearControl').style.display = 'none';
                 updateVisualization();
             }
+            // Update insights to reflect current view's data source
+            updateInsights();
         });
     });
 
@@ -611,27 +613,40 @@ function updateDataTable() {
     const tbody = document.getElementById('dataTableBody');
     tbody.innerHTML = '';
 
+    // Determine primary data source based on view
+    const usePPP = state.currentView === 'ppp';
+
     state.selectedCountries.forEach(code => {
         const gdp = state.gdpData[code];
         const ppp = state.pppData[code];
-        if (!gdp) return;
+        if (!gdp && !ppp) return;
 
         const latestYear = 2023;
-        const gVal = gdp.values[latestYear];
-        const pVal = ppp ? ppp.values[latestYear] : null;
         const prevYear = latestYear - 5;
-        const oldGVal = gdp.values[prevYear];
 
-        const growth = (gVal && oldGVal) ? ((gVal - oldGVal) / oldGVal * 100) : null;
+        const gVal = gdp ? gdp.values[latestYear] : null;
+        const pVal = ppp ? ppp.values[latestYear] : null;
+
+        // Calculate growth based on current view
+        let growth = null;
+        if (usePPP && ppp) {
+            const oldPVal = ppp.values[prevYear];
+            growth = (pVal && oldPVal) ? ((pVal - oldPVal) / oldPVal * 100) : null;
+        } else if (gdp) {
+            const oldGVal = gdp.values[prevYear];
+            growth = (gVal && oldGVal) ? ((gVal - oldGVal) / oldGVal * 100) : null;
+        }
+
+        const countryName = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : 'Unknown');
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${gdp.name}</td>
+            <td>${countryName}</td>
             <td>${gVal ? '$' + Math.round(gVal).toLocaleString() : 'N/A'}</td>
             <td>${pVal ? '$' + Math.round(pVal).toLocaleString() : 'N/A'}</td>
             <td>${(gVal && pVal) ? (gVal / pVal).toFixed(3) : 'N/A'}</td>
-            <td class="${growth >= 0 ? 'positive' : 'negative'}">
-                ${growth !== null ? growth.toFixed(1) + '%' : 'N/A'}
+            <td class="${growth !== null ? (growth >= 0 ? 'positive' : 'negative') : ''}">
+                ${growth !== null ? (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%' : 'N/A'}
             </td>
         `;
         tbody.appendChild(tr);
@@ -643,52 +658,114 @@ function updateInsights() {
     const topContainer = document.getElementById('topPerformers');
     const trendContainer = document.getElementById('growthTrends');
 
-    if (state.selectedCountries.length < 2) {
-        content.innerHTML = '<p>Select more countries to see comparative insights.</p>';
+    if (state.selectedCountries.length < 1) {
+        content.innerHTML = '<p>Select countries to see insights and growth statistics.</p>';
+        topContainer.innerHTML = '';
+        trendContainer.innerHTML = '';
         return;
     }
 
-    // Calculate highlights
-    const year = 2023;
-    const sorted = [...state.selectedCountries]
-        .map(code => ({ code, val: state.gdpData[code]?.values[year] || 0 }))
-        .sort((a, b) => b.val - a.val);
+    // Determine which data source to use based on current view
+    const useGDP = state.currentView === 'gdp' || state.currentView === 'compare' || state.currentView === 'ratio' || state.currentView === 'map';
+    const usePPP = state.currentView === 'ppp';
+    const dataSource = usePPP ? state.pppData : state.gdpData;
+    const dataLabel = usePPP ? 'PPP' : 'GDP';
+    const currencyLabel = usePPP ? 'Int\'l $' : 'USD';
 
-    const leader = state.gdpData[sorted[0].code].name;
-    const runnerUp = state.gdpData[sorted[1].code].name;
-    const diff = ((sorted[0].val - sorted[1].val) / sorted[1].val * 100).toFixed(1);
+    const latestYear = 2023;
+    const prevYear1 = 2022;
+    const prevYear5 = 2018;
+    const prevYear10 = 2013;
 
-    content.innerHTML = `
-        <p><span class="insight-highlight">${leader}</span> leads this group with a GDP per capita of 
-        <span class="insight-highlight">$${Math.round(sorted[0].val).toLocaleString()}</span>.</p>
-        <p>It is currently <span class="insight-highlight">${diff}%</span> higher than ${runnerUp}.</p>
+    // Calculate values for selected countries
+    const countryStats = state.selectedCountries
+        .filter(code => dataSource[code])
+        .map(code => {
+            const country = dataSource[code];
+            const latest = country.values[latestYear];
+            const prev1 = country.values[prevYear1];
+            const prev5 = country.values[prevYear5];
+            const prev10 = country.values[prevYear10];
+
+            // Calculate growth rates
+            const growth1yr = (latest && prev1) ? ((latest - prev1) / prev1 * 100) : null;
+            const growth5yr = (latest && prev5) ? ((latest - prev5) / prev5 * 100) : null;
+            const growth10yr = (latest && prev10) ? ((latest - prev10) / prev10 * 100) : null;
+
+            // Calculate CAGR (Compound Annual Growth Rate) over 5 years
+            const cagr5 = (latest && prev5) ? ((Math.pow(latest / prev5, 1 / 5) - 1) * 100) : null;
+
+            return {
+                code,
+                name: country.name,
+                latest,
+                growth1yr,
+                growth5yr,
+                growth10yr,
+                cagr5
+            };
+        })
+        .filter(c => c.latest)
+        .sort((a, b) => b.latest - a.latest);
+
+    if (countryStats.length === 0) {
+        content.innerHTML = '<p>No data available for selected countries.</p>';
+        topContainer.innerHTML = '';
+        trendContainer.innerHTML = '';
+        return;
+    }
+
+    // Key Insights content
+    const leader = countryStats[0];
+    let insightHTML = `
+        <p><span class="insight-highlight">${leader.name}</span> leads with ${dataLabel} per capita of 
+        <span class="insight-highlight">$${Math.round(leader.latest).toLocaleString()}</span> (${currencyLabel}).</p>
     `;
 
-    // Top Performers
-    topContainer.innerHTML = sorted.slice(0, 3).map((item, i) => `
+    if (countryStats.length >= 2) {
+        const runnerUp = countryStats[1];
+        const diff = ((leader.latest - runnerUp.latest) / runnerUp.latest * 100).toFixed(1);
+        insightHTML += `<p>That's <span class="insight-highlight">${diff}%</span> higher than ${runnerUp.name}.</p>`;
+    }
+
+    // Add growth summary for single country view
+    if (countryStats.length === 1 && leader.growth5yr !== null) {
+        const growthDir = leader.growth5yr >= 0 ? 'grew' : 'declined';
+        insightHTML += `<p>${dataLabel} per capita ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growth5yr).toFixed(1)}%</span> over 5 years.</p>`;
+        if (leader.cagr5 !== null) {
+            insightHTML += `<p>Avg. annual growth (CAGR): <span class="insight-highlight">${leader.cagr5.toFixed(2)}%</span></p>`;
+        }
+    }
+
+    content.innerHTML = insightHTML;
+
+    // Top Performers (by value)
+    topContainer.innerHTML = countryStats.slice(0, 3).map((item, i) => `
         <div class="performer-item">
             <span class="performer-rank">${i + 1}</span>
-            <span class="performer-name">${state.gdpData[item.code].name}</span>
-            <span class="performer-value">$${Math.round(item.val / 1000)}k</span>
+            <span class="performer-name">${item.name}</span>
+            <span class="performer-value">$${Math.round(item.latest / 1000)}k</span>
         </div>
     `).join('');
 
-    // Growth Trends
-    const growthSorted = [...state.selectedCountries]
-        .map(code => {
-            const country = state.gdpData[code];
-            const g = (country.values[2023] && country.values[2018]) ?
-                ((country.values[2023] - country.values[2018]) / country.values[2018] * 100) : -100;
-            return { code, g };
-        })
-        .sort((a, b) => b.g - a.g);
+    // Growth Trends (sorted by 5-year growth)
+    const growthSorted = [...countryStats]
+        .filter(c => c.growth5yr !== null)
+        .sort((a, b) => b.growth5yr - a.growth5yr);
 
-    trendContainer.innerHTML = growthSorted.slice(0, 3).map(item => `
-        <div class="trend-item">
-            <span class="trend-name">${state.gdpData[item.code].name}</span>
-            <span class="trend-value">${item.g > -100 ? '+' + item.g.toFixed(1) + '%' : 'N/A'}</span>
-        </div>
-    `).join('');
+    if (growthSorted.length > 0) {
+        trendContainer.innerHTML = growthSorted.slice(0, 3).map(item => {
+            const isPositive = item.growth5yr >= 0;
+            return `
+                <div class="trend-item">
+                    <span class="trend-name">${item.name}</span>
+                    <span class="trend-value ${isPositive ? '' : 'negative'}">${isPositive ? '+' : ''}${item.growth5yr.toFixed(1)}%</span>
+                </div>
+            `;
+        }).join('');
+    } else {
+        trendContainer.innerHTML = '<div class="trend-item"><span class="trend-name">No growth data available</span></div>';
+    }
 }
 
 function updateStats() {
