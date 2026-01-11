@@ -215,6 +215,7 @@ function setupEventListeners() {
         }
         document.getElementById('yearStartDisplay').textContent = state.yearStart;
         updateVisualization();
+        updateInsights();
     });
 
     yearEnd.addEventListener('input', (e) => {
@@ -226,6 +227,7 @@ function setupEventListeners() {
         }
         document.getElementById('yearEndDisplay').textContent = state.yearEnd;
         updateVisualization();
+        updateInsights();
     });
 
     // Map Controls
@@ -666,47 +668,42 @@ function updateInsights() {
     }
 
     // Determine which data source to use based on current view
-    const useGDP = state.currentView === 'gdp' || state.currentView === 'compare' || state.currentView === 'ratio' || state.currentView === 'map';
     const usePPP = state.currentView === 'ppp';
     const dataSource = usePPP ? state.pppData : state.gdpData;
     const dataLabel = usePPP ? 'PPP' : 'GDP';
     const currencyLabel = usePPP ? 'Int\'l $' : 'USD';
 
-    const latestYear = 2023;
-    const prevYear1 = 2022;
-    const prevYear5 = 2018;
-    const prevYear10 = 2013;
+    // Use the user's selected year range
+    const startYear = state.yearStart;
+    const endYear = state.yearEnd;
+    const yearSpan = endYear - startYear;
 
     // Calculate values for selected countries
     const countryStats = state.selectedCountries
         .filter(code => dataSource[code])
         .map(code => {
             const country = dataSource[code];
-            const latest = country.values[latestYear];
-            const prev1 = country.values[prevYear1];
-            const prev5 = country.values[prevYear5];
-            const prev10 = country.values[prevYear10];
+            const endVal = country.values[endYear];
+            const startVal = country.values[startYear];
 
-            // Calculate growth rates
-            const growth1yr = (latest && prev1) ? ((latest - prev1) / prev1 * 100) : null;
-            const growth5yr = (latest && prev5) ? ((latest - prev5) / prev5 * 100) : null;
-            const growth10yr = (latest && prev10) ? ((latest - prev10) / prev10 * 100) : null;
+            // Calculate growth over selected period
+            const growthPeriod = (endVal && startVal) ? ((endVal - startVal) / startVal * 100) : null;
 
-            // Calculate CAGR (Compound Annual Growth Rate) over 5 years
-            const cagr5 = (latest && prev5) ? ((Math.pow(latest / prev5, 1 / 5) - 1) * 100) : null;
+            // Calculate CAGR over selected period
+            const cagr = (endVal && startVal && yearSpan > 0) ?
+                ((Math.pow(endVal / startVal, 1 / yearSpan) - 1) * 100) : null;
 
             return {
                 code,
                 name: country.name,
-                latest,
-                growth1yr,
-                growth5yr,
-                growth10yr,
-                cagr5
+                startVal,
+                endVal,
+                growthPeriod,
+                cagr
             };
         })
-        .filter(c => c.latest)
-        .sort((a, b) => b.latest - a.latest);
+        .filter(c => c.endVal)
+        .sort((a, b) => b.endVal - a.endVal);
 
     if (countryStats.length === 0) {
         content.innerHTML = '<p>No data available for selected countries.</p>';
@@ -719,47 +716,47 @@ function updateInsights() {
     const leader = countryStats[0];
     let insightHTML = `
         <p><span class="insight-highlight">${leader.name}</span> leads with ${dataLabel} per capita of 
-        <span class="insight-highlight">$${Math.round(leader.latest).toLocaleString()}</span> (${currencyLabel}).</p>
+        <span class="insight-highlight">$${Math.round(leader.endVal).toLocaleString()}</span> (${currencyLabel}) in ${endYear}.</p>
     `;
 
     if (countryStats.length >= 2) {
         const runnerUp = countryStats[1];
-        const diff = ((leader.latest - runnerUp.latest) / runnerUp.latest * 100).toFixed(1);
+        const diff = ((leader.endVal - runnerUp.endVal) / runnerUp.endVal * 100).toFixed(1);
         insightHTML += `<p>That's <span class="insight-highlight">${diff}%</span> higher than ${runnerUp.name}.</p>`;
     }
 
-    // Add growth summary for single country view
-    if (countryStats.length === 1 && leader.growth5yr !== null) {
-        const growthDir = leader.growth5yr >= 0 ? 'grew' : 'declined';
-        insightHTML += `<p>${dataLabel} per capita ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growth5yr).toFixed(1)}%</span> over 5 years.</p>`;
-        if (leader.cagr5 !== null) {
-            insightHTML += `<p>Avg. annual growth (CAGR): <span class="insight-highlight">${leader.cagr5.toFixed(2)}%</span></p>`;
+    // Add growth summary based on selected period
+    if (leader.growthPeriod !== null && leader.startVal) {
+        const growthDir = leader.growthPeriod >= 0 ? 'grew' : 'declined';
+        insightHTML += `<p>${dataLabel} per capita ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growthPeriod).toFixed(1)}%</span> from ${startYear} to ${endYear}.</p>`;
+        if (leader.cagr !== null && yearSpan > 1) {
+            insightHTML += `<p>Avg. annual growth (CAGR): <span class="insight-highlight">${leader.cagr >= 0 ? '+' : ''}${leader.cagr.toFixed(2)}%</span></p>`;
         }
     }
 
     content.innerHTML = insightHTML;
 
-    // Top Performers (by value)
+    // Top Performers (by end year value)
     topContainer.innerHTML = countryStats.slice(0, 3).map((item, i) => `
         <div class="performer-item">
             <span class="performer-rank">${i + 1}</span>
             <span class="performer-name">${item.name}</span>
-            <span class="performer-value">$${Math.round(item.latest / 1000)}k</span>
+            <span class="performer-value">$${Math.round(item.endVal / 1000)}k</span>
         </div>
     `).join('');
 
-    // Growth Trends (sorted by 5-year growth)
+    // Growth Trends (sorted by period growth)
     const growthSorted = [...countryStats]
-        .filter(c => c.growth5yr !== null)
-        .sort((a, b) => b.growth5yr - a.growth5yr);
+        .filter(c => c.growthPeriod !== null)
+        .sort((a, b) => b.growthPeriod - a.growthPeriod);
 
     if (growthSorted.length > 0) {
         trendContainer.innerHTML = growthSorted.slice(0, 3).map(item => {
-            const isPositive = item.growth5yr >= 0;
+            const isPositive = item.growthPeriod >= 0;
             return `
                 <div class="trend-item">
                     <span class="trend-name">${item.name}</span>
-                    <span class="trend-value ${isPositive ? '' : 'negative'}">${isPositive ? '+' : ''}${item.growth5yr.toFixed(1)}%</span>
+                    <span class="trend-value ${isPositive ? '' : 'negative'}">${isPositive ? '+' : ''}${item.growthPeriod.toFixed(1)}%</span>
                 </div>
             `;
         }).join('');
