@@ -242,6 +242,48 @@ function setupEventListeners() {
     document.getElementById('downloadChart').addEventListener('click', downloadChart);
     document.getElementById('resetZoom').addEventListener('click', () => state.chart && state.chart.resetZoom());
     document.getElementById('exportData').addEventListener('click', exportToCSV);
+
+    // Theme Toggle
+    const themeToggle = document.getElementById('themeToggle');
+    themeToggle.addEventListener('click', () => {
+        const root = document.documentElement;
+        const isDark = root.classList.contains('dark-mode');
+        const isLight = root.classList.contains('light-mode');
+
+        if (isDark) {
+            root.classList.remove('dark-mode');
+            root.classList.add('light-mode');
+            localStorage.setItem('theme', 'light');
+        } else if (isLight) {
+            root.classList.remove('light-mode');
+            root.classList.add('dark-mode');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            // System preference - toggle to opposite
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (prefersDark) {
+                root.classList.add('light-mode');
+                localStorage.setItem('theme', 'light');
+            } else {
+                root.classList.add('dark-mode');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+        // Re-render chart with new colors
+        if (state.currentView !== 'map') {
+            renderChart();
+        } else {
+            renderMap();
+        }
+    });
+
+    // Restore saved theme preference
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark-mode');
+    } else if (savedTheme === 'light') {
+        document.documentElement.classList.add('light-mode');
+    }
 }
 
 function removeCountry(code) {
@@ -334,17 +376,17 @@ function renderChart() {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        color: '#6b7280',
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim() || '#6b7280',
                         font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', size: 12 },
                         usePointStyle: true,
                         padding: 16
                     }
                 },
                 tooltip: {
-                    backgroundColor: '#1f2937',
-                    titleColor: '#ffffff',
-                    bodyColor: '#e5e7eb',
-                    borderColor: '#374151',
+                    backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-tooltip-bg').trim() || '#1f2937',
+                    titleColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-tooltip-text').trim() || '#ffffff',
+                    bodyColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-tooltip-text').trim() || '#e5e7eb',
+                    borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#374151',
                     borderWidth: 1,
                     padding: 12,
                     cornerRadius: 6,
@@ -372,15 +414,16 @@ function renderChart() {
             },
             scales: {
                 x: {
-                    grid: { color: '#f3f4f6' },
-                    ticks: { color: '#6b7280', font: { size: 11 } },
-                    border: { color: '#e5e7eb' }
+                    grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim() || '#f3f4f6' },
+                    ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim() || '#6b7280', font: { size: 11 } },
+                    border: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#e5e7eb' }
                 },
                 y: {
-                    grid: { color: '#f3f4f6' },
-                    ticks: { color: '#6b7280', font: { size: 11 } },
-                    border: { color: '#e5e7eb' },
-                    title: { display: true, text: yAxisLabel, color: '#6b7280', font: { size: 12, weight: '500' } }
+                    min: 0, // GDP cannot be negative
+                    grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim() || '#f3f4f6' },
+                    ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim() || '#6b7280', font: { size: 11 } },
+                    border: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#e5e7eb' },
+                    title: { display: true, text: yAxisLabel, color: getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim() || '#6b7280', font: { size: 12, weight: '500' } }
                 }
             },
             animations: {
@@ -485,11 +528,12 @@ function renderMap() {
     });
 
     // Use logarithmic scale for sequential blue palette
+    const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#f3f4f6';
     const colorScale = (val) => {
-        if (val === null) return '#f3f4f6';
+        if (val === null) return noDataColor;
         const normalized = Math.log(val) / Math.log(max);
         // Sequential blue scale
-        const colors = ['#f0f9ff', '#bae6fd', '#38bdf8', '#0284c7', '#075985'];
+        const colors = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];
         const idx = Math.min(Math.floor(normalized * colors.length), colors.length - 1);
         return colors[idx];
     };

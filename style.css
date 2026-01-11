@@ -1,9 +1,9 @@
 /* ============================================
    Global GDP Explorer - Professional Design
-   Clean, data-focused aesthetic
+   Clean, data-focused aesthetic with dark mode
    ============================================ */
 
-/* Design Tokens */
+/* Design Tokens - Light Mode (Default) */
 :root {
     /* Neutral Palette */
     --color-bg: #ffffff;
@@ -36,6 +36,17 @@
     --color-success: #059669;
     --color-danger: #dc2626;
 
+    /* Chart Theming */
+    --chart-grid: #f3f4f6;
+    --chart-text: #6b7280;
+    --chart-border: #e5e7eb;
+    --chart-tooltip-bg: #1f2937;
+    --chart-tooltip-text: #ffffff;
+
+    /* Map */
+    --map-no-data: #f3f4f6;
+    --map-stroke: #e5e7eb;
+
     /* Spacing Scale */
     --space-1: 4px;
     --space-2: 8px;
@@ -66,6 +77,72 @@
     /* Shadows */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
     --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Dark Mode - System Preference */
+@media (prefers-color-scheme: dark) {
+    :root:not(.light-mode) {
+        --color-bg: #0f0f0f;
+        --color-bg-alt: #171717;
+        --color-bg-card: #1a1a1a;
+        --color-border: #2e2e2e;
+        --color-border-strong: #404040;
+
+        --color-text: #f5f5f5;
+        --color-text-secondary: #a3a3a3;
+        --color-text-muted: #737373;
+
+        --color-primary: #3b82f6;
+        --color-primary-hover: #2563eb;
+        --color-primary-light: rgba(59, 130, 246, 0.15);
+
+        --color-success: #10b981;
+        --color-danger: #ef4444;
+
+        --chart-grid: #262626;
+        --chart-text: #a3a3a3;
+        --chart-border: #2e2e2e;
+        --chart-tooltip-bg: #262626;
+        --chart-tooltip-text: #f5f5f5;
+
+        --map-no-data: #262626;
+        --map-stroke: #404040;
+
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+}
+
+/* Dark Mode - Manual Toggle */
+:root.dark-mode {
+    --color-bg: #0f0f0f;
+    --color-bg-alt: #171717;
+    --color-bg-card: #1a1a1a;
+    --color-border: #2e2e2e;
+    --color-border-strong: #404040;
+
+    --color-text: #f5f5f5;
+    --color-text-secondary: #a3a3a3;
+    --color-text-muted: #737373;
+
+    --color-primary: #3b82f6;
+    --color-primary-hover: #2563eb;
+    --color-primary-light: rgba(59, 130, 246, 0.15);
+
+    --color-success: #10b981;
+    --color-danger: #ef4444;
+
+    --chart-grid: #262626;
+    --chart-text: #a3a3a3;
+    --chart-border: #2e2e2e;
+    --chart-tooltip-bg: #262626;
+    --chart-tooltip-text: #f5f5f5;
+
+    --map-no-data: #262626;
+    --map-stroke: #404040;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 /* Reset */
@@ -145,9 +222,62 @@ body {
     letter-spacing: -0.01em;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
 .header-stats {
     display: flex;
     gap: var(--space-6);
+}
+
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.theme-toggle:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.theme-toggle svg {
+    width: 18px;
+    height: 18px;
+}
+
+.theme-toggle .icon-moon {
+    display: none;
+}
+
+/* Show moon in dark mode, hide sun */
+:root.dark-mode .theme-toggle .icon-sun {
+    display: none;
+}
+
+:root.dark-mode .theme-toggle .icon-moon {
+    display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not(.light-mode) .theme-toggle .icon-sun {
+        display: none;
+    }
+
+    :root:not(.light-mode) .theme-toggle .icon-moon {
+        display: block;
+    }
 }
 
 .stat-item {
