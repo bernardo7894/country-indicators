@@ -21,7 +21,7 @@ const state = {
     gdpData: {},
     pppData: {},
     countries: [],
-    selectedCountries: ['USA', 'CHN', 'BRA', 'FRA', 'IND'],
+    selectedCountries: [],
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
     yearStart: 1990,
     yearEnd: 2024,
@@ -67,6 +67,7 @@ async function init() {
     // 4. Setup UI
     setupEventListeners();
     populateCountrySelector();
+    setupCountrySearch();
     updateCountryChips();
 
     // 5. Initial Render
@@ -141,6 +142,114 @@ function populateCountrySelector() {
     });
 }
 
+function setupCountrySearch() {
+    const searchInput = document.getElementById('countrySearch');
+    const dropdown = document.getElementById('countrySearchDropdown');
+
+    if (!searchInput || !dropdown) return;
+
+    let selectedIndex = -1;
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        dropdown.innerHTML = '';
+        selectedIndex = -1;
+
+        if (query.length < 1) {
+            dropdown.classList.remove('visible');
+            return;
+        }
+
+        const matches = state.countries.filter(c =>
+            c.name.toLowerCase().includes(query) ||
+            c.code.toLowerCase().includes(query)
+        ).slice(0, 10); // Limit to 10 results
+
+        if (matches.length === 0) {
+            dropdown.innerHTML = '<div class="search-no-results">No countries found</div>';
+            dropdown.classList.add('visible');
+            return;
+        }
+
+        matches.forEach((country, idx) => {
+            const item = document.createElement('div');
+            item.className = 'search-result-item';
+            item.dataset.code = country.code;
+            item.dataset.index = idx;
+
+            const isSelected = state.selectedCountries.includes(country.code);
+            item.innerHTML = `
+                <span class="search-result-name">${highlightMatch(country.name, query)}</span>
+                <span class="search-result-code">${country.code}</span>
+                ${isSelected ? '<span class="search-result-added">✓</span>' : ''}
+            `;
+
+            item.addEventListener('click', () => {
+                addCountryFromSearch(country.code);
+                searchInput.value = '';
+                dropdown.classList.remove('visible');
+            });
+
+            dropdown.appendChild(item);
+        });
+
+        dropdown.classList.add('visible');
+    });
+
+    // Keyboard navigation
+    searchInput.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('.search-result-item');
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            updateSelectedItem(items, selectedIndex);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, 0);
+            updateSelectedItem(items, selectedIndex);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedIndex >= 0 && items[selectedIndex]) {
+                const code = items[selectedIndex].dataset.code;
+                addCountryFromSearch(code);
+                searchInput.value = '';
+                dropdown.classList.remove('visible');
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('visible');
+            searchInput.blur();
+        }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.remove('visible');
+        }
+    });
+}
+
+function updateSelectedItem(items, selectedIndex) {
+    items.forEach((item, idx) => {
+        item.classList.toggle('selected', idx === selectedIndex);
+    });
+}
+
+function highlightMatch(text, query) {
+    const regex = new RegExp(`(${query})`, 'gi');
+    return text.replace(regex, '<mark>$1</mark>');
+}
+
+function addCountryFromSearch(code) {
+    if (!state.selectedCountries.includes(code)) {
+        state.selectedCountries.push(code);
+        updateCountryChips();
+        updateVisualization();
+        updateInsights();
+    }
+}
+
 function updateCountryChips() {
     const container = document.getElementById('selectedCountries');
     container.innerHTML = '';
@@ -177,11 +286,15 @@ function setupEventListeners() {
                 document.getElementById('chartContainer').style.display = 'none';
                 document.getElementById('mapContainer').style.display = 'block';
                 document.getElementById('mapYearControl').style.display = 'block';
+                document.getElementById('dataTableContainer').style.display = 'none';
+                document.getElementById('globalRankingsContainer').style.display = 'block';
                 renderMap();
             } else {
                 document.getElementById('chartContainer').style.display = 'block';
                 document.getElementById('mapContainer').style.display = 'none';
                 document.getElementById('mapYearControl').style.display = 'none';
+                document.getElementById('dataTableContainer').style.display = 'block';
+                document.getElementById('globalRankingsContainer').style.display = 'none';
                 updateVisualization();
             }
             // Update insights to reflect current view's data source
@@ -442,8 +555,19 @@ function createDatasets(sourceData, years) {
         const country = sourceData[code];
         if (!country) return null;
 
+        // Calculate growth for the selected period
+        const startYear = years[0];
+        const endYear = years[years.length - 1];
+        const startVal = country.values[startYear];
+        const endVal = country.values[endYear];
+        let growthLabel = '';
+        if (startVal && endVal) {
+            const growth = ((endVal - startVal) / startVal * 100);
+            growthLabel = ` (${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%)`;
+        }
+
         return {
-            label: country.name,
+            label: country.name + growthLabel,
             data: years.map(y => country.values[y]),
             borderColor: COLORS[i % COLORS.length],
             backgroundColor: COLORS[i % COLORS.length] + '20',
@@ -462,8 +586,23 @@ function createRatioDatasets(years) {
         const ppp = state.pppData[code];
         if (!gdp || !ppp) return null;
 
+        // Calculate ratio growth for the selected period
+        const startYear = years[0];
+        const endYear = years[years.length - 1];
+        const gStart = gdp.values[startYear];
+        const pStart = ppp.values[startYear];
+        const gEnd = gdp.values[endYear];
+        const pEnd = ppp.values[endYear];
+        let growthLabel = '';
+        if (gStart && pStart && gEnd && pEnd) {
+            const startRatio = gStart / pStart;
+            const endRatio = gEnd / pEnd;
+            const growth = ((endRatio - startRatio) / startRatio * 100);
+            growthLabel = ` (${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%)`;
+        }
+
         return {
-            label: gdp.name,
+            label: gdp.name + growthLabel,
             data: years.map(y => {
                 const gVal = gdp.values[y];
                 const pVal = ppp.values[y];
@@ -479,14 +618,35 @@ function createRatioDatasets(years) {
 
 function createComparisonDatasets(years) {
     const datasets = [];
+    const startYear = years[0];
+    const endYear = years[years.length - 1];
+
     // Only show first 3 selected countries to avoid clutter in comparison mode
     state.selectedCountries.slice(0, 3).forEach((code, i) => {
         const gdp = state.gdpData[code];
         const ppp = state.pppData[code];
         if (!gdp || !ppp) return;
 
+        // Calculate GDP growth
+        const gdpStart = gdp.values[startYear];
+        const gdpEnd = gdp.values[endYear];
+        let gdpGrowthLabel = '';
+        if (gdpStart && gdpEnd) {
+            const growth = ((gdpEnd - gdpStart) / gdpStart * 100);
+            gdpGrowthLabel = ` ${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`;
+        }
+
+        // Calculate PPP growth
+        const pppStart = ppp.values[startYear];
+        const pppEnd = ppp.values[endYear];
+        let pppGrowthLabel = '';
+        if (pppStart && pppEnd) {
+            const growth = ((pppEnd - pppStart) / pppStart * 100);
+            pppGrowthLabel = ` ${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`;
+        }
+
         datasets.push({
-            label: `${gdp.name} (GDP)`,
+            label: `${gdp.name} (GDP${gdpGrowthLabel})`,
             data: years.map(y => gdp.values[y]),
             borderColor: COLORS[i % COLORS.length],
             borderWidth: 3,
@@ -495,7 +655,7 @@ function createComparisonDatasets(years) {
         });
 
         datasets.push({
-            label: `${gdp.name} (PPP)`,
+            label: `${gdp.name} (PPP${pppGrowthLabel})`,
             data: years.map(y => ppp.values[y]),
             borderColor: COLORS[i % COLORS.length],
             borderWidth: 3,
@@ -517,24 +677,51 @@ function renderMap() {
     // Clear and prepare
     svg.innerHTML = '';
 
-    // Simple projection logic: mercator-ish
+    // Use 1000x600 for better aspect ratio (matches viewBox)
     const width = 1000;
-    const height = 500;
+    const height = 600;
+
+    // Calculate rankings and stats for all countries
+    const countryStats = [];
+    Object.keys(state.gdpData).forEach(code => {
+        const gdpCountry = state.gdpData[code];
+        const pppCountry = state.pppData[code];
+        const gdpVal = gdpCountry?.values[year];
+        const pppVal = pppCountry?.values[year];
+
+        // Calculate growth (5 year)
+        const prevYear = year - 5;
+        const gdpPrev = gdpCountry?.values[prevYear];
+        const growth = (gdpVal && gdpPrev) ? ((gdpVal - gdpPrev) / gdpPrev * 100) : null;
+
+        if (gdpVal !== null && gdpVal !== undefined) {
+            countryStats.push({
+                code,
+                name: gdpCountry.name,
+                gdp: gdpVal,
+                ppp: pppVal,
+                growth,
+                ratio: (gdpVal && pppVal) ? (gdpVal / pppVal) : null
+            });
+        }
+    });
+
+    // Sort by GDP for rankings
+    countryStats.sort((a, b) => b.gdp - a.gdp);
+    const rankMap = {};
+    countryStats.forEach((c, i) => rankMap[c.code] = i + 1);
 
     // Find min/max for scale
     let min = Infinity, max = -Infinity;
-    Object.values(state.gdpData).forEach(c => {
-        const val = c.values[year];
-        if (val !== null) {
-            if (val < min) min = val;
-            if (val > max) max = val;
-        }
+    countryStats.forEach(c => {
+        if (c.gdp < min) min = c.gdp;
+        if (c.gdp > max) max = c.gdp;
     });
 
     // Use logarithmic scale for sequential blue palette
     const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#f3f4f6';
     const colorScale = (val) => {
-        if (val === null) return noDataColor;
+        if (val === null || val === undefined) return noDataColor;
         const normalized = Math.log(val) / Math.log(max);
         // Sequential blue scale
         const colors = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];
@@ -547,61 +734,146 @@ function renderMap() {
 
     // Process GeoJSON features
     state.geoData.features.forEach(feature => {
-        const code = feature.properties.ISO_A3;
-        const countryData = state.gdpData[code];
-        const val = countryData ? countryData.values[year] : null;
+        // Use ISO3166-1-Alpha-3 as the country code (GeoJSON property name)
+        const code = feature.properties['ISO3166-1-Alpha-3'];
+        const countryName = feature.properties.name || feature.properties.ADMIN || 'Unknown';
+        const gdpCountry = state.gdpData[code];
+        const pppCountry = state.pppData[code];
+        const gdpVal = gdpCountry ? gdpCountry.values[year] : null;
+        const pppVal = pppCountry ? pppCountry.values[year] : null;
+        const rank = rankMap[code];
+
+        // Calculate growth
+        const prevYear = year - 5;
+        const gdpPrev = gdpCountry?.values[prevYear];
+        const growth = (gdpVal && gdpPrev) ? ((gdpVal - gdpPrev) / gdpPrev * 100) : null;
+        const ratio = (gdpVal && pppVal) ? (gdpVal / pppVal) : null;
 
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', generatePathData(feature.geometry, width, height));
-        path.setAttribute('fill', colorScale(val));
+        path.setAttribute('fill', colorScale(gdpVal));
         path.setAttribute('data-code', code);
 
+        // Highlight selected countries
+        const isSelected = state.selectedCountries.includes(code);
+        if (isSelected) {
+            path.style.stroke = '#f59e0b';
+            path.style.strokeWidth = '2';
+        }
+
         path.addEventListener('mouseenter', (e) => {
-            path.style.stroke = "#fff";
+            path.style.stroke = isSelected ? '#f59e0b' : '#fff';
+            path.style.strokeWidth = isSelected ? '3' : '2';
             tooltip.classList.add('visible');
+
+            // Enhanced tooltip with more info
             tooltip.innerHTML = `
-                <strong>${feature.properties.ADMIN}</strong><br>
-                GDP (2015 USD): ${val ? '$' + Math.round(val).toLocaleString() : 'N/A'}
+                <div class="tooltip-header">
+                    <strong>${countryName}</strong>
+                    ${rank ? `<span class="tooltip-rank">#${rank}</span>` : ''}
+                </div>
+                <div class="tooltip-grid">
+                    <span class="tooltip-label">GDP (${year}):</span>
+                    <span class="tooltip-value">${gdpVal ? '$' + Math.round(gdpVal).toLocaleString() : 'N/A'}</span>
+                    <span class="tooltip-label">PPP:</span>
+                    <span class="tooltip-value">${pppVal ? '$' + Math.round(pppVal).toLocaleString() : 'N/A'}</span>
+                    <span class="tooltip-label">GDP/PPP:</span>
+                    <span class="tooltip-value">${ratio ? ratio.toFixed(3) : 'N/A'}</span>
+                    <span class="tooltip-label">5yr Growth:</span>
+                    <span class="tooltip-value ${growth !== null ? (growth >= 0 ? 'positive' : 'negative') : ''}">${growth !== null ? (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%' : 'N/A'}</span>
+                </div>
+                <div class="tooltip-hint">
+                    ${isSelected ? 'Click to remove from comparison' : 'Click to add to comparison'}
+                </div>
             `;
         });
 
         path.addEventListener('mousemove', (e) => {
-            tooltip.style.left = (e.pageX + 10) + 'px';
-            tooltip.style.top = (e.pageY + 10) + 'px';
+            // Use clientX/clientY for fixed positioning (doesn't include scroll offset)
+            tooltip.style.left = (e.clientX + 15) + 'px';
+            tooltip.style.top = (e.clientY + 15) + 'px';
         });
 
         path.addEventListener('mouseleave', () => {
-            path.style.stroke = "#e5e7eb";
+            path.style.stroke = isSelected ? '#f59e0b' : '#e5e7eb';
+            path.style.strokeWidth = isSelected ? '2' : '0.5';
             tooltip.classList.remove('visible');
         });
 
-        path.addEventListener('click', () => {
-            if (!state.selectedCountries.includes(code)) {
+        // Single click to toggle country selection (mobile-friendly)
+        path.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!code) return;
+
+            if (state.selectedCountries.includes(code)) {
+                // Remove country
+                removeCountry(code);
+                // Update just this path's style instead of re-rendering
+                path.style.stroke = '#e5e7eb';
+                path.style.strokeWidth = '0.5';
+            } else {
+                // Add country
                 state.selectedCountries.push(code);
                 updateCountryChips();
                 updateInsights();
+                updateDataTable();
+                // Update just this path's style instead of re-rendering
+                path.style.stroke = '#f59e0b';
+                path.style.strokeWidth = '2';
             }
+            // Update the global rankings table to reflect selection state
+            renderGlobalRankings();
+        });
+
+        // Prevent context menu on right-click
+        path.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
         });
 
         svg.appendChild(path);
     });
+
+    // Update global rankings table
+    updateGlobalRankings(countryStats);
 }
 
-// Simple Robinson/Mercator projection mock for the demo
+// Mercator projection for the world map
 function generatePathData(geometry, width, height) {
     if (!geometry) return "";
 
+    // Web Mercator projection with proper scaling
+    const maxLat = 85; // Clamp latitude to avoid infinite values
+
+    // Pre-calculate the Y bounds for the max latitude
+    const latRadMax = maxLat * Math.PI / 180;
+    const mercMax = Math.log(Math.tan(Math.PI / 4 + latRadMax / 2));
+
     const project = (coords) => {
-        const x = (coords[0] + 180) * (width / 360);
-        const y = (90 - coords[1]) * (height / 180);
-        return `${x},${y}`;
+        const lon = coords[0];
+        let lat = Math.max(-maxLat, Math.min(maxLat, coords[1]));
+
+        // X: linear mapping from -180..180 to 0..width
+        const x = (lon + 180) * (width / 360);
+
+        // Y: Mercator projection, scaled to fit within height
+        const latRad = lat * Math.PI / 180;
+        const mercY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+        // Map mercY from [-mercMax, mercMax] to [height, 0]
+        const y = (height / 2) - (mercY / mercMax) * (height / 2);
+
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    };
+
+    const processRing = (ring) => {
+        if (!ring || ring.length === 0) return "";
+        return "M" + ring.map(project).join("L") + "Z";
     };
 
     if (geometry.type === "Polygon") {
-        return "M" + geometry.coordinates[0].map(project).join("L") + "Z";
+        return processRing(geometry.coordinates[0]);
     } else if (geometry.type === "MultiPolygon") {
-        return geometry.coordinates.map(poly =>
-            "M" + poly[0].map(project).join("L") + "Z"
+        return geometry.coordinates.map(polygon =>
+            processRing(polygon[0])
         ).join(" ");
     }
     return "";
@@ -617,14 +889,14 @@ function updateDataTable() {
 
     // Determine primary data source based on view
     const usePPP = state.currentView === 'ppp';
+    const latestYear = 2023;
+    const prevYear = latestYear - 5;
 
-    state.selectedCountries.forEach(code => {
+    // Build data array for sorting
+    const tableData = state.selectedCountries.map(code => {
         const gdp = state.gdpData[code];
         const ppp = state.pppData[code];
-        if (!gdp && !ppp) return;
-
-        const latestYear = 2023;
-        const prevYear = latestYear - 5;
+        if (!gdp && !ppp) return null;
 
         const gVal = gdp ? gdp.values[latestYear] : null;
         const pVal = ppp ? ppp.values[latestYear] : null;
@@ -639,16 +911,57 @@ function updateDataTable() {
             growth = (gVal && oldGVal) ? ((gVal - oldGVal) / oldGVal * 100) : null;
         }
 
-        const countryName = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : 'Unknown');
+        const ratio = (gVal && pVal) ? (gVal / pVal) : null;
+        const name = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : 'Unknown');
 
+        return { code, name, gdp: gVal, ppp: pVal, ratio, growth };
+    }).filter(d => d !== null);
+
+    // Sort based on current sort field
+    tableData.sort((a, b) => {
+        let aVal, bVal;
+        switch (dataSortField) {
+            case 'name':
+                aVal = a.name;
+                bVal = b.name;
+                return dataSortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            case 'gdp':
+                aVal = a.gdp || 0;
+                bVal = b.gdp || 0;
+                break;
+            case 'ppp':
+                aVal = a.ppp || 0;
+                bVal = b.ppp || 0;
+                break;
+            case 'ratio':
+                aVal = a.ratio || 0;
+                bVal = b.ratio || 0;
+                break;
+            case 'growth':
+                aVal = a.growth || -Infinity;
+                bVal = b.growth || -Infinity;
+                break;
+            default:
+                aVal = a.gdp || 0;
+                bVal = b.gdp || 0;
+        }
+        return dataSortAsc ? aVal - bVal : bVal - aVal;
+    });
+
+    // Render sorted rows
+    tableData.forEach(d => {
         const tr = document.createElement('tr');
+        tr.dataset.code = d.code;
         tr.innerHTML = `
-            <td>${countryName}</td>
-            <td>${gVal ? '$' + Math.round(gVal).toLocaleString() : 'N/A'}</td>
-            <td>${pVal ? '$' + Math.round(pVal).toLocaleString() : 'N/A'}</td>
-            <td>${(gVal && pVal) ? (gVal / pVal).toFixed(3) : 'N/A'}</td>
-            <td class="${growth !== null ? (growth >= 0 ? 'positive' : 'negative') : ''}">
-                ${growth !== null ? (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%' : 'N/A'}
+            <td>${d.name}</td>
+            <td>${d.gdp ? '$' + Math.round(d.gdp).toLocaleString() : 'N/A'}</td>
+            <td>${d.ppp ? '$' + Math.round(d.ppp).toLocaleString() : 'N/A'}</td>
+            <td>${d.ratio ? d.ratio.toFixed(3) : 'N/A'}</td>
+            <td class="${d.growth !== null ? (d.growth >= 0 ? 'positive' : 'negative') : ''}">
+                ${d.growth !== null ? (d.growth >= 0 ? '+' : '') + d.growth.toFixed(1) + '%' : 'N/A'}
+            </td>
+            <td>
+                <button class="remove-btn" onclick="removeCountry('${d.code}')" title="Remove from comparison">✕</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -802,3 +1115,184 @@ function exportToCSV() {
     a.setAttribute('download', 'gdp_data_export.csv');
     a.click();
 }
+
+// ============================================
+// Global Rankings Table
+// ============================================
+
+let globalRankingsData = [];
+let rankingsSortField = 'rank';
+let rankingsSortAsc = true;
+let rankingsSearchQuery = '';
+
+function updateGlobalRankings(countryStats) {
+    globalRankingsData = countryStats;
+    document.getElementById('rankingYear').textContent = state.mapYear;
+    renderGlobalRankings();
+}
+
+function renderGlobalRankings() {
+    const tbody = document.getElementById('globalRankingsBody');
+    if (!tbody) return;
+
+    // Filter by search
+    let filtered = globalRankingsData;
+    if (rankingsSearchQuery) {
+        const query = rankingsSearchQuery.toLowerCase();
+        filtered = globalRankingsData.filter(c =>
+            c.name.toLowerCase().includes(query) ||
+            c.code.toLowerCase().includes(query)
+        );
+    }
+
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+        let aVal, bVal;
+        switch (rankingsSortField) {
+            case 'rank':
+                aVal = globalRankingsData.indexOf(a);
+                bVal = globalRankingsData.indexOf(b);
+                break;
+            case 'name':
+                aVal = a.name;
+                bVal = b.name;
+                return rankingsSortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            case 'gdp':
+                aVal = a.gdp || 0;
+                bVal = b.gdp || 0;
+                break;
+            case 'ppp':
+                aVal = a.ppp || 0;
+                bVal = b.ppp || 0;
+                break;
+            case 'growth':
+                aVal = a.growth || -Infinity;
+                bVal = b.growth || -Infinity;
+                break;
+            default:
+                aVal = a.gdp || 0;
+                bVal = b.gdp || 0;
+        }
+        return rankingsSortAsc ? aVal - bVal : bVal - aVal;
+    });
+
+    tbody.innerHTML = sorted.map((c, i) => {
+        const originalRank = globalRankingsData.indexOf(c) + 1;
+        const isSelected = state.selectedCountries.includes(c.code);
+        return `
+            <tr class="${isSelected ? 'row-selected' : ''}" data-code="${c.code}">
+                <td class="rank-cell">${originalRank}</td>
+                <td>${c.name}</td>
+                <td>$${Math.round(c.gdp).toLocaleString()}</td>
+                <td>${c.ppp ? '$' + Math.round(c.ppp).toLocaleString() : 'N/A'}</td>
+                <td class="${c.growth !== null ? (c.growth >= 0 ? 'positive' : 'negative') : ''}">
+                    ${c.growth !== null ? (c.growth >= 0 ? '+' : '') + c.growth.toFixed(1) + '%' : 'N/A'}
+                </td>
+                <td>
+                    <button class="compare-btn ${isSelected ? 'remove' : 'add'}" 
+                            onclick="toggleCountryFromRankings('${c.code}')">
+                        ${isSelected ? '✕' : '+'}
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function toggleCountryFromRankings(code) {
+    if (state.selectedCountries.includes(code)) {
+        removeCountry(code);
+    } else {
+        state.selectedCountries.push(code);
+        updateCountryChips();
+        updateInsights();
+        updateDataTable();
+    }
+    renderGlobalRankings();
+    if (state.currentView === 'map') renderMap();
+}
+
+function setupGlobalRankingsListeners() {
+    // Search input
+    const searchInput = document.getElementById('rankingSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            rankingsSearchQuery = e.target.value;
+            renderGlobalRankings();
+        });
+    }
+
+    // Metric selector
+    const metricSelect = document.getElementById('rankingMetric');
+    if (metricSelect) {
+        metricSelect.addEventListener('change', (e) => {
+            rankingsSortField = e.target.value;
+            rankingsSortAsc = false; // Default to descending for metrics
+            renderGlobalRankings();
+        });
+    }
+
+    // Sortable headers
+    const headers = document.querySelectorAll('#globalRankingsTable th.sortable');
+    headers.forEach(th => {
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (rankingsSortField === field) {
+                rankingsSortAsc = !rankingsSortAsc;
+            } else {
+                rankingsSortField = field;
+                rankingsSortAsc = field === 'name' || field === 'rank';
+            }
+
+            // Update sort icons
+            headers.forEach(h => {
+                h.classList.remove('sorted-asc', 'sorted-desc');
+                h.querySelector('.sort-icon').textContent = '↕';
+            });
+            th.classList.add(rankingsSortAsc ? 'sorted-asc' : 'sorted-desc');
+            th.querySelector('.sort-icon').textContent = rankingsSortAsc ? '↑' : '↓';
+
+            renderGlobalRankings();
+        });
+    });
+}
+
+// ============================================
+// Sortable Data Table (Selected Countries)
+// ============================================
+
+let dataSortField = 'gdp';
+let dataSortAsc = false;
+
+function setupDataTableSorting() {
+    const headers = document.querySelectorAll('#dataTable th.sortable');
+    headers.forEach(th => {
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (dataSortField === field) {
+                dataSortAsc = !dataSortAsc;
+            } else {
+                dataSortField = field;
+                dataSortAsc = field === 'name';
+            }
+
+            // Update sort icons
+            headers.forEach(h => {
+                h.classList.remove('sorted-asc', 'sorted-desc');
+                h.querySelector('.sort-icon').textContent = '↕';
+            });
+            th.classList.add(dataSortAsc ? 'sorted-asc' : 'sorted-desc');
+            th.querySelector('.sort-icon').textContent = dataSortAsc ? '↑' : '↓';
+
+            updateDataTable();
+        });
+    });
+}
+
+// Initialize additional listeners after DOM load
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        setupGlobalRankingsListeners();
+        setupDataTableSorting();
+    }, 100);
+});

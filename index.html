@@ -13,7 +13,7 @@
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=5">
 </head>
 
 <body>
@@ -91,14 +91,26 @@
                 </div>
 
                 <div class="control-group">
-                    <label class="control-label" for="countrySelect">Select Countries</label>
+                    <label class="control-label" for="countrySearch">Search & Add Countries</label>
                     <div class="country-selector">
-                        <select id="countrySelect" multiple>
-                            <!-- Countries will be populated dynamically -->
-                        </select>
+                        <div class="country-search-container">
+                            <input type="text" id="countrySearch" class="country-search-input"
+                                placeholder="Type to search countries..." autocomplete="off">
+                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="11" cy="11" r="8" />
+                                <path d="M21 21l-4.35-4.35" />
+                            </svg>
+                            <div class="country-search-dropdown" id="countrySearchDropdown">
+                                <!-- Search results will appear here -->
+                            </div>
+                        </div>
                         <div class="selected-countries" id="selectedCountries">
                             <!-- Selected country chips will appear here -->
                         </div>
+                        <select id="countrySelect" multiple class="country-select-hidden">
+                            <!-- Countries will be populated dynamically -->
+                        </select>
                     </div>
                 </div>
 
@@ -170,15 +182,15 @@
                         </div>
                     </div>
                     <div class="map-wrapper" id="mapWrapper">
-                        <svg id="worldMap" viewBox="0 0 1000 500"></svg>
+                        <svg id="worldMap" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
                         <div class="map-tooltip" id="mapTooltip"></div>
                     </div>
                 </div>
 
-                <!-- Data Table -->
+                <!-- Data Table (Selected Countries) -->
                 <div class="data-table-container" id="dataTableContainer">
                     <div class="table-header">
-                        <h3>Data Summary</h3>
+                        <h3>Selected Countries Comparison</h3>
                         <button class="action-btn" id="exportData" title="Export Data">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -190,18 +202,57 @@
                         </button>
                     </div>
                     <div class="table-wrapper">
-                        <table id="dataTable">
+                        <table id="dataTable" class="sortable-table">
                             <thead>
                                 <tr>
-                                    <th>Country</th>
-                                    <th>Latest GDP (USD)</th>
-                                    <th>Latest PPP</th>
-                                    <th>GDP/PPP Ratio</th>
-                                    <th>Growth (5yr)</th>
+                                    <th data-sort="name" class="sortable">Country <span class="sort-icon">↕</span></th>
+                                    <th data-sort="gdp" class="sortable">GDP per Capita <span class="sort-icon">↕</span>
+                                    </th>
+                                    <th data-sort="ppp" class="sortable">PPP per Capita <span class="sort-icon">↕</span>
+                                    </th>
+                                    <th data-sort="ratio" class="sortable">GDP/PPP Ratio <span
+                                            class="sort-icon">↕</span></th>
+                                    <th data-sort="growth" class="sortable">Growth <span class="sort-icon">↕</span></th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="dataTableBody">
                                 <!-- Data will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Global Rankings Table (visible in Map view) -->
+                <div class="data-table-container global-rankings-table" id="globalRankingsContainer"
+                    style="display: none;">
+                    <div class="table-header">
+                        <h3>🌍 Global Rankings (<span id="rankingYear">2023</span>)</h3>
+                        <div class="table-controls">
+                            <input type="text" id="rankingSearch" placeholder="Search countries..."
+                                class="ranking-search">
+                            <select id="rankingMetric" class="ranking-metric-select">
+                                <option value="gdp">GDP per Capita (USD)</option>
+                                <option value="ppp">PPP per Capita</option>
+                                <option value="growth">Growth Rate</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-wrapper rankings-wrapper">
+                        <table id="globalRankingsTable" class="sortable-table">
+                            <thead>
+                                <tr>
+                                    <th data-sort="rank" class="sortable sorted-asc">Rank <span
+                                            class="sort-icon">↑</span></th>
+                                    <th data-sort="name" class="sortable">Country <span class="sort-icon">↕</span></th>
+                                    <th data-sort="gdp" class="sortable">GDP (USD) <span class="sort-icon">↕</span></th>
+                                    <th data-sort="ppp" class="sortable">PPP <span class="sort-icon">↕</span></th>
+                                    <th data-sort="growth" class="sortable">Growth <span class="sort-icon">↕</span></th>
+                                    <th>Compare</th>
+                                </tr>
+                            </thead>
+                            <tbody id="globalRankingsBody">
+                                <!-- Rankings will be populated dynamically -->
                             </tbody>
                         </table>
                     </div>
@@ -246,7 +297,7 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=5"></script>
 </body>
 
 </html>
