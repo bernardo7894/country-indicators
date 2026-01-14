@@ -130,14 +130,60 @@ async function init() {
 
     // 5. Setup UI
     setupEventListeners();
+    loadSettings(); // Load saved preferences
     populateCountrySelector();
     setupCountrySearch();
     updateCountryChips();
 
     // 6. Initial Render
     // 6. Initial Render
+    // 6. Initial Render
     hideLoading();
     setPriceType('current'); // Trigger initial render and UI sync
+}
+
+function loadSettings() {
+    const savedStart = localStorage.getItem('gdp_explorer_year_start');
+    const savedEnd = localStorage.getItem('gdp_explorer_year_end');
+
+    if (savedStart) {
+        let start = parseInt(savedStart);
+        if (!isNaN(start) && start >= 1960 && start <= 2024) {
+            state.yearStart = start;
+        }
+    }
+
+    if (savedEnd) {
+        let end = parseInt(savedEnd);
+        if (!isNaN(end) && end >= 1960 && end <= 2024) {
+            state.yearEnd = end;
+        }
+    }
+
+    // Validate range
+    if (state.yearStart >= state.yearEnd) {
+        state.yearStart = 1990;
+        state.yearEnd = 2024;
+    }
+
+    // Update UI elements
+    const yearStartInput = document.getElementById('yearStart');
+    const yearEndInput = document.getElementById('yearEnd');
+
+    if (yearStartInput) {
+        yearStartInput.value = state.yearStart;
+        document.getElementById('yearStartDisplay').textContent = state.yearStart;
+    }
+
+    if (yearEndInput) {
+        yearEndInput.value = state.yearEnd;
+        document.getElementById('yearEndDisplay').textContent = state.yearEnd;
+    }
+}
+
+function saveSettings() {
+    localStorage.setItem('gdp_explorer_year_start', state.yearStart);
+    localStorage.setItem('gdp_explorer_year_end', state.yearEnd);
 }
 
 function mergeStateData(csvText, targetKey) {
@@ -463,6 +509,7 @@ function setupEventListeners() {
             document.getElementById('yearEndDisplay').textContent = state.yearEnd;
         }
         document.getElementById('yearStartDisplay').textContent = state.yearStart;
+        saveSettings();
         updateVisualization();
         updateInsights();
     });
@@ -475,6 +522,7 @@ function setupEventListeners() {
             document.getElementById('yearStartDisplay').textContent = state.yearStart;
         }
         document.getElementById('yearEndDisplay').textContent = state.yearEnd;
+        saveSettings();
         updateVisualization();
         updateInsights();
     });
