@@ -5,8 +5,8 @@
 
 // Configuration & Constants
 const FILES = {
-    GDP: 'API_NY.GDP.PCAP.KD_DS2_en_csv_v2_141.csv',
-    PPP: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv'
+    GDP: 'API_NY.GDP.PCAP.CD_DS2_en_csv_v2_174336.csv',
+    PPP: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv'
 };
 
 const COLORS = [
@@ -454,18 +454,18 @@ function renderChart() {
 
     switch (state.currentView) {
         case 'gdp':
-            title = 'GDP per Capita (Constant 2015 US$)';
+            title = 'GDP per Capita (Current US$)';
             yAxisLabel = 'USD';
             datasets = createDatasets(state.gdpData, years);
             break;
         case 'ppp':
-            title = 'GDP per Capita, PPP (Constant 2021 International $)';
+            title = 'GDP per Capita, PPP (Current International $)';
             yAxisLabel = 'International $';
             datasets = createDatasets(state.pppData, years);
             break;
         case 'ratio':
-            title = 'GDP to PPP Ratio';
-            yAxisLabel = 'Ratio';
+            title = 'Price Level Index (PLI)';
+            yAxisLabel = 'Price Level Index';
             datasets = createRatioDatasets(years);
             break;
         case 'compare':
@@ -777,7 +777,7 @@ function renderMap() {
                     <span class="tooltip-value">${gdpVal ? '$' + Math.round(gdpVal).toLocaleString() : 'N/A'}</span>
                     <span class="tooltip-label">PPP:</span>
                     <span class="tooltip-value">${pppVal ? '$' + Math.round(pppVal).toLocaleString() : 'N/A'}</span>
-                    <span class="tooltip-label">GDP/PPP:</span>
+                    <span class="tooltip-label">PLI:</span>
                     <span class="tooltip-value">${ratio ? ratio.toFixed(3) : 'N/A'}</span>
                     <span class="tooltip-label">5yr Growth:</span>
                     <span class="tooltip-value ${growth !== null ? (growth >= 0 ? 'positive' : 'negative') : ''}">${growth !== null ? (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%' : 'N/A'}</span>
