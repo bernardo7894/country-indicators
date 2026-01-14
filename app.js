@@ -8,7 +8,11 @@ const FILES = {
     GDP_CURRENT: 'API_NY.GDP.PCAP.CD_DS2_en_csv_v2_174336.csv',
     GDP_CONSTANT: 'API_NY.GDP.PCAP.KD_DS2_en_csv_v2_141.csv',
     PPP_CURRENT: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv',
-    PPP_CONSTANT: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv'
+    PPP_CONSTANT: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv',
+    STATE_GDP_CURRENT: 'US_States_GDP_PC_Current.csv',
+    STATE_GDP_CONSTANT: 'US_States_GDP_PC_Constant.csv',
+    STATE_PPP_CURRENT: 'US_States_PPP_PC_Current.csv',
+    STATE_PPP_CONSTANT: 'US_States_PPP_PC_Constant.csv'
 };
 
 const COLORS = [
@@ -82,44 +86,107 @@ function setPriceType(type) {
     updateInsights();
 }
 
+
 async function init() {
     // 1. Fetch data
-    const [gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, geoRaw] = await Promise.all([
+    const [
+        gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, geoRaw,
+        stateGdpCur, stateGdpConst, statePppCur, statePppConst
+    ] = await Promise.all([
         fetch(FILES.GDP_CURRENT).then(res => res.text()),
         fetch(FILES.GDP_CONSTANT).then(res => res.text()),
         fetch(FILES.PPP_CURRENT).then(res => res.text()),
         fetch(FILES.PPP_CONSTANT).then(res => res.text()),
-        fetch(GEOJSON_URL).then(res => res.json())
+        fetch(GEOJSON_URL).then(res => res.json()),
+        fetch(FILES.STATE_GDP_CURRENT).then(res => res.text()),
+        fetch(FILES.STATE_GDP_CONSTANT).then(res => res.text()),
+        fetch(FILES.STATE_PPP_CURRENT).then(res => res.text()),
+        fetch(FILES.STATE_PPP_CONSTANT).then(res => res.text())
     ]);
 
-    // 2. Parse data
+    // 2. Parse Country Data
     state.rawData.gdpCurrent = parseCSV(gdpCurRaw);
     state.rawData.gdpConstant = parseCSV(gdpConstRaw);
     state.rawData.pppCurrent = parseCSV(pppCurRaw);
     state.rawData.pppConstant = parseCSV(pppConstRaw);
+
+    // 3. Parse and Merge State Data
+    mergeStateData(stateGdpCur, 'gdpCurrent');
+    mergeStateData(stateGdpConst, 'gdpConstant');
+    mergeStateData(statePppCur, 'pppCurrent');
+    mergeStateData(statePppConst, 'pppConstant');
+
     state.geoData = geoRaw;
 
     // Set initial active data
     updateActiveData();
 
-    // 3. Extract country list (use current GDP as base)
+    // 4. Extract country list (use current GDP as base)
     state.countries = Object.keys(state.rawData.gdpCurrent).map(code => ({
         code,
         name: state.rawData.gdpCurrent[code].name
     })).sort((a, b) => a.name.localeCompare(b.name));
 
-    // 4. Setup UI
+    // 5. Setup UI
     setupEventListeners();
     populateCountrySelector();
     setupCountrySearch();
     updateCountryChips();
 
-    // 5. Initial Render
+    // 6. Initial Render
     hideLoading();
     updateVisualization();
     updateStats();
     updateInsights();
 }
+
+function mergeStateData(csvText, targetKey) {
+    const lines = csvText.trim().split('\n');
+    const header = lines[0].split(',').map(h => h.trim());
+    const years = header.slice(1);
+
+    const target = state.rawData[targetKey];
+
+    for (let i = 1; i < lines.length; i++) {
+        // Handle "State Name",Val1,Val2... format
+        const line = lines[i];
+        const parts = [];
+        let current = '';
+        let inQuote = false;
+
+        // Custom split to handle potential quotes in names
+        for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            if (char === '"') inQuote = !inQuote;
+            else if (char === ',' && !inQuote) {
+                parts.push(current);
+                current = '';
+            } else current += char;
+        }
+        parts.push(current);
+
+        // Clean parts
+        const row = parts.map(p => p.replace(/^"|"$/g, '').trim());
+        const name = row[0];
+        const values = {};
+
+        // Generate a unique ID for state to convert mixing with Country Codes
+        // Use "US-" prefix + Name (no spaces) or similar.
+        // Actually, let's just use the name as the code if it doesn't conflict. 
+        // Safer: USA_STATE_Name
+        const code = 'USA_ST_' + name.replace(/\s+/g, '_').toUpperCase();
+
+        for (let y = 0; y < years.length; y++) {
+            const val = row[y + 1];
+            if (val && val !== '') {
+                values[years[y]] = parseFloat(val);
+            }
+        }
+
+        target[code] = { name, values };
+    }
+}
+
 
 // ============================================
 // Data Parsing
