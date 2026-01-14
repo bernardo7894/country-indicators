@@ -83,6 +83,7 @@ function setPriceType(type) {
 
     updateActiveData();
     updateVisualization();
+    updateDataTable(); // Ensure table refreshes
     updateInsights();
 }
 
