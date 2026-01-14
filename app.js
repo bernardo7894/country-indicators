@@ -1119,7 +1119,13 @@ function updateDataTable() {
             growth = (gVal && oldGVal) ? ((gVal - oldGVal) / oldGVal * 100) : null;
         }
 
-        const ratio = (gVal && pVal) ? (gVal / pVal) : null;
+        // For PLI, always use CURRENT prices
+        const gdpCur = state.rawData.gdpCurrent[code];
+        const pppCur = state.rawData.pppCurrent[code];
+        const gValCur = gdpCur ? gdpCur.values[latestYear] : null;
+        const pValCur = pppCur ? pppCur.values[latestYear] : null;
+
+        const ratio = (gValCur && pValCur) ? (gValCur / pValCur) : null;
         const name = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : 'Unknown');
 
         return { code, name, gdp: gVal, ppp: pVal, ratio, growth };
