@@ -892,8 +892,17 @@ function updateDataTable() {
     const latestYear = state.yearEnd;
     const prevYear = state.yearStart;
 
+    const isSelectionEmpty = state.selectedCountries.length === 0;
+    const codesToShow = isSelectionEmpty ? state.countries.map(c => c.code) : state.selectedCountries;
+
+    // Update Header
+    const headerTitle = document.getElementById('tableHeaderTitle');
+    if (headerTitle) {
+        headerTitle.textContent = isSelectionEmpty ? 'Global Data Overview' : 'Selected Countries Comparison';
+    }
+
     // Build data array for sorting
-    const tableData = state.selectedCountries.map(code => {
+    const tableData = codesToShow.map(code => {
         const gdp = state.gdpData[code];
         const ppp = state.pppData[code];
         if (!gdp && !ppp) return null;
@@ -952,6 +961,14 @@ function updateDataTable() {
     tableData.forEach(d => {
         const tr = document.createElement('tr');
         tr.dataset.code = d.code;
+
+        let actionBtn;
+        if (isSelectionEmpty) {
+            actionBtn = `<button class="compare-btn add" onclick="addCountryFromSearch('${d.code}')" title="Add to comparison">+</button>`;
+        } else {
+            actionBtn = `<button class="remove-btn" onclick="removeCountry('${d.code}')" title="Remove from comparison">✕</button>`;
+        }
+
         tr.innerHTML = `
             <td>${d.name}</td>
             <td>${d.gdp ? '$' + Math.round(d.gdp).toLocaleString() : 'N/A'}</td>
@@ -961,7 +978,7 @@ function updateDataTable() {
                 ${d.growth !== null ? (d.growth >= 0 ? '+' : '') + d.growth.toFixed(1) + '%' : 'N/A'}
             </td>
             <td>
-                <button class="remove-btn" onclick="removeCountry('${d.code}')" title="Remove from comparison">✕</button>
+                ${actionBtn}
             </td>
         `;
         tbody.appendChild(tr);
