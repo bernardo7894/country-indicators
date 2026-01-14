@@ -387,9 +387,11 @@ function updateCountryChips() {
 
 function setupEventListeners() {
     // View Mode Buttons
-    document.querySelectorAll('.view-btn').forEach(btn => {
+    // View Mode Buttons
+    const viewBtns = document.querySelectorAll('.view-btn[data-view]');
+    viewBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            viewBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.currentView = btn.dataset.view;
 
