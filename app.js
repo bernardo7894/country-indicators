@@ -889,8 +889,8 @@ function updateDataTable() {
 
     // Determine primary data source based on view
     const usePPP = state.currentView === 'ppp';
-    const latestYear = 2023;
-    const prevYear = latestYear - 5;
+    const latestYear = state.yearEnd;
+    const prevYear = state.yearStart;
 
     // Build data array for sorting
     const tableData = state.selectedCountries.map(code => {

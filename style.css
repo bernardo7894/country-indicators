@@ -688,11 +688,11 @@ body {
     height: 8px;
     border-radius: 2px;
     background: linear-gradient(to right,
-            #f0f9ff,
-            #bae6fd,
-            #38bdf8,
-            #0284c7,
-            #075985);
+            #dbeafe,
+            #93c5fd,
+            #3b82f6,
+            #1d4ed8,
+            #1e3a8a);
     border: 1px solid var(--color-border);
 }
 
