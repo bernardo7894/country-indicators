@@ -135,10 +135,9 @@ async function init() {
     updateCountryChips();
 
     // 6. Initial Render
+    // 6. Initial Render
     hideLoading();
-    updateVisualization();
-    updateStats();
-    updateInsights();
+    setPriceType('current'); // Trigger initial render and UI sync
 }
 
 function mergeStateData(csvText, targetKey) {
@@ -151,36 +150,25 @@ function mergeStateData(csvText, targetKey) {
     for (let i = 1; i < lines.length; i++) {
         // Handle "State Name",Val1,Val2... format
         const line = lines[i];
-        const parts = [];
-        let current = '';
-        let inQuote = false;
+        if (!line.trim()) continue;
 
-        // Custom split to handle potential quotes in names
-        for (let j = 0; j < line.length; j++) {
-            const char = line[j];
-            if (char === '"') inQuote = !inQuote;
-            else if (char === ',' && !inQuote) {
-                parts.push(current);
-                current = '';
-            } else current += char;
-        }
-        parts.push(current);
+        const parts = parseCSVLine(line);
 
-        // Clean parts
-        const row = parts.map(p => p.replace(/^"|"$/g, '').trim());
-        const name = row[0];
+        if (parts.length < 2) continue;
+
+        const name = parts[0];
         const values = {};
 
         // Generate a unique ID for state to convert mixing with Country Codes
-        // Use "US-" prefix + Name (no spaces) or similar.
-        // Actually, let's just use the name as the code if it doesn't conflict. 
-        // Safer: USA_STATE_Name
         const code = 'USA_ST_' + name.replace(/\s+/g, '_').toUpperCase();
 
         for (let y = 0; y < years.length; y++) {
-            const val = row[y + 1];
-            if (val && val !== '') {
-                values[years[y]] = parseFloat(val);
+            const valIdx = y + 1;
+            if (valIdx < parts.length) {
+                const val = parts[valIdx];
+                if (val && val !== '') {
+                    values[years[y]] = parseFloat(val);
+                }
             }
         }
 
@@ -193,6 +181,27 @@ function mergeStateData(csvText, targetKey) {
 // Data Parsing
 // ============================================
 
+// Robust CSV Line Parser (handles quotes and commas correctly)
+function parseCSVLine(line) {
+    const parts = [];
+    let current = '';
+    let inQuote = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+            inQuote = !inQuote;
+        } else if (char === ',' && !inQuote) {
+            parts.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    parts.push(current.trim());
+    return parts.map(p => p.replace(/^"|"$/g, '').trim()); // Strip outer quotes
+}
+
 function parseCSV(csvText) {
     const lines = csvText.trim().split('\n');
     const data = {};
@@ -201,25 +210,16 @@ function parseCSV(csvText) {
     const headerLine = lines[4];
     if (!headerLine) return data;
 
-    // Improved CSV parsing for "Value1","Value2" format
-    const parseLine = (line) => {
-        // Remove trailing comma if exists
-        const cleanedLine = line.trim().replace(/,$/, '');
-        // Remove first and last quote
-        const content = cleanedLine.startsWith('"') && cleanedLine.endsWith('"')
-            ? cleanedLine.slice(1, -1)
-            : cleanedLine;
-        return content.split('","');
-    };
-
-    const headers = parseLine(headerLine);
+    const headers = parseCSVLine(headerLine);
     const startYearIdx = headers.findIndex(h => h.trim() === '1960');
+
+    if (startYearIdx === -1) return data;
 
     for (let i = 5; i < lines.length; i++) {
         const line = lines[i];
         if (!line.trim()) continue;
 
-        const parts = parseLine(line);
+        const parts = parseCSVLine(line);
         if (parts.length < 5) continue;
 
         const name = parts[0];
