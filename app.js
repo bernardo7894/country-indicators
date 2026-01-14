@@ -5,8 +5,10 @@
 
 // Configuration & Constants
 const FILES = {
-    GDP: 'API_NY.GDP.PCAP.CD_DS2_en_csv_v2_174336.csv',
-    PPP: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv'
+    GDP_CURRENT: 'API_NY.GDP.PCAP.CD_DS2_en_csv_v2_174336.csv',
+    GDP_CONSTANT: 'API_NY.GDP.PCAP.KD_DS2_en_csv_v2_141.csv',
+    PPP_CURRENT: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv',
+    PPP_CONSTANT: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv'
 };
 
 const COLORS = [
@@ -20,9 +22,16 @@ const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/ma
 const state = {
     gdpData: {},
     pppData: {},
+    rawData: {
+        gdpCurrent: {},
+        gdpConstant: {},
+        pppCurrent: {},
+        pppConstant: {}
+    },
     countries: [],
     selectedCountries: [],
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
+    priceType: 'current', // 'current', 'constant'
     yearStart: 1990,
     yearEnd: 2024,
     mapYear: 2023,
@@ -45,23 +54,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+
+function updateActiveData() {
+    if (state.priceType === 'current') {
+        state.gdpData = state.rawData.gdpCurrent;
+        state.pppData = state.rawData.pppCurrent;
+    } else {
+        state.gdpData = state.rawData.gdpConstant;
+        state.pppData = state.rawData.pppConstant;
+    }
+}
+
+function setPriceType(type) {
+    state.priceType = type;
+
+    // Update UI buttons
+    document.querySelectorAll('[data-price]').forEach(btn => {
+        if (btn.dataset.price === type) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    updateActiveData();
+    updateVisualization();
+    updateInsights();
+}
+
 async function init() {
     // 1. Fetch data
-    const [gdpRaw, pppRaw, geoRaw] = await Promise.all([
-        fetch(FILES.GDP).then(res => res.text()),
-        fetch(FILES.PPP).then(res => res.text()),
+    const [gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, geoRaw] = await Promise.all([
+        fetch(FILES.GDP_CURRENT).then(res => res.text()),
+        fetch(FILES.GDP_CONSTANT).then(res => res.text()),
+        fetch(FILES.PPP_CURRENT).then(res => res.text()),
+        fetch(FILES.PPP_CONSTANT).then(res => res.text()),
         fetch(GEOJSON_URL).then(res => res.json())
     ]);
 
     // 2. Parse data
-    state.gdpData = parseCSV(gdpRaw);
-    state.pppData = parseCSV(pppRaw);
+    state.rawData.gdpCurrent = parseCSV(gdpCurRaw);
+    state.rawData.gdpConstant = parseCSV(gdpConstRaw);
+    state.rawData.pppCurrent = parseCSV(pppCurRaw);
+    state.rawData.pppConstant = parseCSV(pppConstRaw);
     state.geoData = geoRaw;
 
-    // 3. Extract country list
-    state.countries = Object.keys(state.gdpData).map(code => ({
+    // Set initial active data
+    updateActiveData();
+
+    // 3. Extract country list (use current GDP as base)
+    state.countries = Object.keys(state.rawData.gdpCurrent).map(code => ({
         code,
-        name: state.gdpData[code].name
+        name: state.rawData.gdpCurrent[code].name
     })).sort((a, b) => a.name.localeCompare(b.name));
 
     // 4. Setup UI
@@ -297,8 +341,30 @@ function setupEventListeners() {
                 document.getElementById('globalRankingsContainer').style.display = 'none';
                 updateVisualization();
             }
+
+            // Handle PLI Price Type Restrictions
+            const priceBtns = document.querySelectorAll('[data-price]');
+            if (state.currentView === 'ratio') {
+                // PLI must be calculated using Current prices
+                setPriceType('current');
+                priceBtns.forEach(b => b.classList.add('disabled'));
+                priceBtns.forEach(b => b.disabled = true);
+            } else {
+                priceBtns.forEach(b => b.classList.remove('disabled'));
+                priceBtns.forEach(b => b.disabled = false);
+            }
+
             // Update insights to reflect current view's data source
             updateInsights();
+        });
+    });
+
+    // Price Type Buttons
+    document.querySelectorAll('[data-price]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            if (state.currentView === 'ratio') return; // Prevent change in PLI mode
+            const type = btn.dataset.price;
+            setPriceType(type);
         });
     });
 
@@ -454,12 +520,16 @@ function renderChart() {
 
     switch (state.currentView) {
         case 'gdp':
-            title = 'GDP per Capita (Current US$)';
+            title = state.priceType === 'current' ?
+                'GDP per Capita (Current US$)' :
+                'GDP per Capita (Constant 2015 US$)';
             yAxisLabel = 'USD';
             datasets = createDatasets(state.gdpData, years);
             break;
         case 'ppp':
-            title = 'GDP per Capita, PPP (Current International $)';
+            title = state.priceType === 'current' ?
+                'GDP per Capita, PPP (Current International $)' :
+                'GDP per Capita, PPP (Constant 2021 International $)';
             yAxisLabel = 'International $';
             datasets = createDatasets(state.pppData, years);
             break;
@@ -886,6 +956,16 @@ function generatePathData(geometry, width, height) {
 function updateDataTable() {
     const tbody = document.getElementById('dataTableBody');
     tbody.innerHTML = '';
+
+    // Update Headers
+    const gdpHeader = document.getElementById('headerGdp');
+    const pppHeader = document.getElementById('headerPpp');
+    if (gdpHeader && pppHeader) {
+        const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015'; // 2015/2021 simplification
+        const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
+        gdpHeader.innerHTML = `GDP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel})</span> <span class="sort-icon">↕</span>`;
+        pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel})</span> <span class="sort-icon">↕</span>`;
+    }
 
     // Determine primary data source based on view
     const usePPP = state.currentView === 'ppp';

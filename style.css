@@ -370,6 +370,19 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
+.view-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: transparent;
+    color: var(--color-text-muted);
+    box-shadow: none;
+}
+
+.view-btn.disabled:hover {
+    background: transparent;
+    color: var(--color-text-muted);
+}
+
 .btn-icon {
     font-size: var(--text-base);
 }

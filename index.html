@@ -91,6 +91,18 @@
                 </div>
 
                 <div class="control-group">
+                    <label class="control-label">Price Type</label>
+                    <div class="view-mode-selector">
+                        <button class="view-btn active" data-price="current" id="priceCurrent">
+                            Current
+                        </button>
+                        <button class="view-btn" data-price="constant" id="priceConstant">
+                            Constant
+                        </button>
+                    </div>
+                </div>
+
+                <div class="control-group">
                     <label class="control-label" for="countrySearch">Search & Add Countries</label>
                     <div class="country-selector">
                         <div class="country-search-container">
@@ -206,9 +218,11 @@
                             <thead>
                                 <tr>
                                     <th data-sort="name" class="sortable">Country <span class="sort-icon">↕</span></th>
-                                    <th data-sort="gdp" class="sortable">GDP per Capita <span class="sort-icon">↕</span>
+                                    <th data-sort="gdp" class="sortable" id="headerGdp">GDP per Capita <span
+                                            class="sort-icon">↕</span>
                                     </th>
-                                    <th data-sort="ppp" class="sortable">PPP per Capita <span class="sort-icon">↕</span>
+                                    <th data-sort="ppp" class="sortable" id="headerPpp">PPP per Capita <span
+                                            class="sort-icon">↕</span>
                                     </th>
                                     <th data-sort="ratio" class="sortable">Price Level Index (PLI) <span
                                             class="sort-icon">↕</span></th>
