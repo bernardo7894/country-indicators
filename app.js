@@ -770,8 +770,9 @@ function createDatasets(sourceData, years) {
 
 function createRatioDatasets(years) {
     return state.selectedCountries.map((code, i) => {
-        const gdp = state.gdpData[code];
-        const ppp = state.pppData[code];
+        // PLI is always calculated using current prices: Nominal GDP / PPP
+        const gdp = state.rawData.gdpCurrent[code];
+        const ppp = state.rawData.pppCurrent[code];
         if (!gdp || !ppp) return null;
 
         // Calculate ratio growth for the selected period
