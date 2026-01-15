@@ -1082,8 +1082,14 @@ function updateDataTable() {
     if (gdpHeader && pppHeader) {
         const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015'; // 2015/2021 simplification
         const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
-        gdpHeader.innerHTML = `GDP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel})</span> <span class="sort-icon">↕</span>`;
-        pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel})</span> <span class="sort-icon">↕</span>`;
+        gdpHeader.innerHTML = `GDP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+
+        // Update Growth Header
+        const growthHeader = document.querySelector('th[data-sort="growth"]');
+        if (growthHeader) {
+            growthHeader.innerHTML = `Growth <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearStart}-${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        }
     }
 
     // Determine primary data source based on view
@@ -1097,7 +1103,9 @@ function updateDataTable() {
     // Update Header
     const headerTitle = document.getElementById('tableHeaderTitle');
     if (headerTitle) {
-        headerTitle.textContent = isSelectionEmpty ? 'Global Data Overview' : 'Selected Countries Comparison';
+        headerTitle.textContent = isSelectionEmpty ?
+            `Global Data Overview (${latestYear})` :
+            `Selected Countries Comparison (${latestYear})`;
     }
 
     // Build data array for sorting
