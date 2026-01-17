@@ -35,7 +35,7 @@ const state = {
     countries: [],
     selectedCountries: [],
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
-    priceType: 'current', // 'current', 'constant'
+    priceType: 'constant', // 'current', 'constant'
     yearStart: 1990,
     yearEnd: 2024,
     mapYear: 2023,
@@ -139,7 +139,7 @@ async function init() {
     // 6. Initial Render
     // 6. Initial Render
     hideLoading();
-    setPriceType('current'); // Trigger initial render and UI sync
+    setPriceType('constant'); // Trigger initial render and UI sync
 }
 
 function loadSettings() {
