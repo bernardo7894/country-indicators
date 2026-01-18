@@ -9,10 +9,12 @@ const FILES = {
     GDP_CONSTANT: 'API_NY.GDP.PCAP.KD_DS2_en_csv_v2_141.csv',
     PPP_CURRENT: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv',
     PPP_CONSTANT: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv',
+    LIFE_EXPECTANCY: 'life_expectancy.csv',
     STATE_GDP_CURRENT: 'US_States_GDP_PC_Current.csv',
     STATE_GDP_CONSTANT: 'US_States_GDP_PC_Constant.csv',
     STATE_PPP_CURRENT: 'US_States_PPP_PC_Current.csv',
-    STATE_PPP_CONSTANT: 'US_States_PPP_PC_Constant.csv'
+    STATE_PPP_CONSTANT: 'US_States_PPP_PC_Constant.csv',
+    STATE_LIFE_EXPECTANCY: 'US_States_Life_Expectancy.csv'
 };
 
 const COLORS = [
@@ -30,8 +32,10 @@ const state = {
         gdpCurrent: {},
         gdpConstant: {},
         pppCurrent: {},
-        pppConstant: {}
+        pppConstant: {},
+        lifeExpectancy: {}
     },
+    lifeExpectancyData: {},
     countries: [],
     selectedCountries: [],
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
@@ -65,8 +69,10 @@ function updateActiveData() {
         state.pppData = state.rawData.pppCurrent;
     } else {
         state.gdpData = state.rawData.gdpConstant;
+        state.gdpData = state.rawData.gdpConstant;
         state.pppData = state.rawData.pppConstant;
     }
+    state.lifeExpectancyData = state.rawData.lifeExpectancy;
 }
 
 function setPriceType(type) {
@@ -92,7 +98,7 @@ async function init() {
     // 1. Fetch data
     const [
         gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, geoRaw,
-        stateGdpCur, stateGdpConst, statePppCur, statePppConst
+        stateGdpCur, stateGdpConst, statePppCur, statePppConst, lifeExpRaw, stateLifeExpRaw
     ] = await Promise.all([
         fetch(FILES.GDP_CURRENT).then(res => res.text()),
         fetch(FILES.GDP_CONSTANT).then(res => res.text()),
@@ -102,20 +108,25 @@ async function init() {
         fetch(FILES.STATE_GDP_CURRENT).then(res => res.text()),
         fetch(FILES.STATE_GDP_CONSTANT).then(res => res.text()),
         fetch(FILES.STATE_PPP_CURRENT).then(res => res.text()),
-        fetch(FILES.STATE_PPP_CONSTANT).then(res => res.text())
+        fetch(FILES.STATE_PPP_CONSTANT).then(res => res.text()),
+        fetch(FILES.LIFE_EXPECTANCY).then(res => res.text()),
+        fetch(FILES.STATE_LIFE_EXPECTANCY).then(res => res.text())
     ]);
 
     // 2. Parse Country Data
     state.rawData.gdpCurrent = parseCSV(gdpCurRaw);
     state.rawData.gdpConstant = parseCSV(gdpConstRaw);
     state.rawData.pppCurrent = parseCSV(pppCurRaw);
+    state.rawData.pppCurrent = parseCSV(pppCurRaw);
     state.rawData.pppConstant = parseCSV(pppConstRaw);
+    state.rawData.lifeExpectancy = parseCSV(lifeExpRaw);
 
     // 3. Parse and Merge State Data
     mergeStateData(stateGdpCur, 'gdpCurrent');
     mergeStateData(stateGdpConst, 'gdpConstant');
     mergeStateData(statePppCur, 'pppCurrent');
     mergeStateData(statePppConst, 'pppConstant');
+    mergeStateData(stateLifeExpRaw, 'lifeExpectancy');
 
     state.geoData = geoRaw;
 
@@ -458,11 +469,11 @@ function setupEventListeners() {
                 updateVisualization();
             }
 
-            // Handle PLI Price Type Restrictions
+            // Handle Price Type Restrictions
             const priceBtns = document.querySelectorAll('[data-price]');
-            if (state.currentView === 'ratio') {
-                // PLI must be calculated using Current prices
-                setPriceType('current');
+            if (state.currentView === 'ratio' || state.currentView === 'life_expectancy') {
+                // PLI and Life Expectancy don't use price types
+                if (state.currentView === 'ratio') setPriceType('current');
                 priceBtns.forEach(b => b.classList.add('disabled'));
                 priceBtns.forEach(b => b.disabled = true);
             } else {
@@ -660,6 +671,11 @@ function renderChart() {
             title = 'GDP vs PPP Comparison';
             yAxisLabel = 'USD / International $';
             datasets = createComparisonDatasets(years);
+            break;
+        case 'life_expectancy':
+            title = 'Life Expectancy at Birth (Years)';
+            yAxisLabel = 'Years';
+            datasets = createDatasets(state.lifeExpectancyData, years);
             break;
     }
 
