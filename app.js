@@ -718,7 +718,9 @@ function renderChart() {
                             if (context.parsed.y !== null) {
                                 label += state.currentView === 'ratio' ?
                                     context.parsed.y.toFixed(3) :
-                                    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(context.parsed.y);
+                                    state.currentView === 'life_expectancy' ?
+                                        context.parsed.y.toFixed(1) + ' years' :
+                                        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(context.parsed.y);
                             }
                             return label;
                         }
@@ -1099,7 +1101,11 @@ function updateDataTable() {
         const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015'; // 2015/2021 simplification
         const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
         gdpHeader.innerHTML = `GDP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
-        pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        if (state.currentView !== 'life_expectancy') {
+            pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        } else {
+            pppHeader.innerHTML = `Life Expectancy <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        }
 
         // Update Growth Header
         const growthHeader = document.querySelector('th[data-sort="growth"]');
@@ -1132,6 +1138,7 @@ function updateDataTable() {
 
         const gVal = gdp ? gdp.values[latestYear] : null;
         const pVal = ppp ? ppp.values[latestYear] : null;
+        const leVal = state.lifeExpectancyData[code] ? state.lifeExpectancyData[code].values[latestYear] : null;
 
         // Calculate growth based on current view
         let growth = null;
@@ -1150,9 +1157,15 @@ function updateDataTable() {
         const pValCur = pppCur ? pppCur.values[latestYear] : null;
 
         const ratio = (gValCur && pValCur) ? (gValCur / pValCur) : null;
-        const name = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : 'Unknown');
+        const name = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : (state.lifeExpectancyData[code] ? state.lifeExpectancyData[code].name : 'Unknown'));
 
-        return { code, name, gdp: gVal, ppp: pVal, ratio, growth };
+        // Handle growth calculation for Life Expectancy view
+        if (state.currentView === 'life_expectancy') {
+            const leStart = state.lifeExpectancyData[code] ? state.lifeExpectancyData[code].values[prevYear] : null;
+            growth = (leVal && leStart) ? ((leVal - leStart) / leStart * 100) : null;
+        }
+
+        return { code, name, gdp: gVal, ppp: pVal, lifeExp: leVal, ratio, growth };
     }).filter(d => d !== null);
 
     // Sort based on current sort field
@@ -1201,7 +1214,10 @@ function updateDataTable() {
         tr.innerHTML = `
             <td>${d.name}</td>
             <td>${d.gdp ? '$' + Math.round(d.gdp).toLocaleString() : 'N/A'}</td>
-            <td>${d.ppp ? '$' + Math.round(d.ppp).toLocaleString() : 'N/A'}</td>
+            <td>${state.currentView === 'life_expectancy' ?
+                (d.lifeExp ? d.lifeExp.toFixed(1) + ' yrs' : 'N/A') :
+                (d.ppp ? '$' + Math.round(d.ppp).toLocaleString() : 'N/A')
+            }</td>
             <td>${d.ratio ? d.ratio.toFixed(3) : 'N/A'}</td>
             <td class="${d.growth !== null ? (d.growth >= 0 ? 'positive' : 'negative') : ''}">
                 ${d.growth !== null ? (d.growth >= 0 ? '+' : '') + d.growth.toFixed(1) + '%' : 'N/A'}
@@ -1228,9 +1244,10 @@ function updateInsights() {
 
     // Determine which data source to use based on current view
     const usePPP = state.currentView === 'ppp';
-    const dataSource = usePPP ? state.pppData : state.gdpData;
-    const dataLabel = usePPP ? 'PPP' : 'GDP';
-    const currencyLabel = usePPP ? 'Int\'l $' : 'USD';
+    const useLifeExp = state.currentView === 'life_expectancy';
+    const dataSource = useLifeExp ? state.lifeExpectancyData : (usePPP ? state.pppData : state.gdpData);
+    const dataLabel = useLifeExp ? 'Life Expectancy' : (usePPP ? 'PPP' : 'GDP');
+    const currencyLabel = useLifeExp ? 'years' : (usePPP ? 'Int\'l $' : 'USD');
 
     // Use the user's selected year range
     const startYear = state.yearStart;
@@ -1275,7 +1292,7 @@ function updateInsights() {
     const leader = countryStats[0];
     let insightHTML = `
         <p><span class="insight-highlight">${leader.name}</span> leads with ${dataLabel} per capita of 
-        <span class="insight-highlight">$${Math.round(leader.endVal).toLocaleString()}</span> (${currencyLabel}) in ${endYear}.</p>
+        <span class="insight-highlight">${useLifeExp ? leader.endVal.toFixed(1) : '$' + Math.round(leader.endVal).toLocaleString()}</span> (${currencyLabel}) in ${endYear}.</p>
     `;
 
     if (countryStats.length >= 2) {
@@ -1300,7 +1317,7 @@ function updateInsights() {
         <div class="performer-item">
             <span class="performer-rank">${i + 1}</span>
             <span class="performer-name">${item.name}</span>
-            <span class="performer-value">$${Math.round(item.endVal / 1000)}k</span>
+            <span class="performer-value">${useLifeExp ? item.endVal.toFixed(1) + ' yrs' : '$' + Math.round(item.endVal / 1000) + 'k'}</span>
         </div>
     `).join('');
 
@@ -1411,6 +1428,10 @@ function renderGlobalRankings() {
                 aVal = a.ppp || 0;
                 bVal = b.ppp || 0;
                 break;
+            case 'life_expectancy':
+                aVal = state.lifeExpectancyData[a.code]?.values[state.mapYear] || 0;
+                bVal = state.lifeExpectancyData[b.code]?.values[state.mapYear] || 0;
+                break;
             case 'growth':
                 aVal = a.growth || -Infinity;
                 bVal = b.growth || -Infinity;
@@ -1430,7 +1451,10 @@ function renderGlobalRankings() {
                 <td class="rank-cell">${originalRank}</td>
                 <td>${c.name}</td>
                 <td>$${Math.round(c.gdp).toLocaleString()}</td>
-                <td>${c.ppp ? '$' + Math.round(c.ppp).toLocaleString() : 'N/A'}</td>
+                <td>${state.currentView === 'life_expectancy' ?
+                (state.lifeExpectancyData[c.code]?.values[state.mapYear]?.toFixed(1) + ' yrs' || 'N/A') :
+                (c.ppp ? '$' + Math.round(c.ppp).toLocaleString() : 'N/A')
+            }</td>
                 <td class="${c.growth !== null ? (c.growth >= 0 ? 'positive' : 'negative') : ''}">
                     ${c.growth !== null ? (c.growth >= 0 ? '+' : '') + c.growth.toFixed(1) + '%' : 'N/A'}
                 </td>
