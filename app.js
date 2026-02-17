@@ -876,6 +876,25 @@ function createComparisonDatasets(years) {
 // Map Logic
 // ============================================
 
+function normalizeCountryName(name) {
+    return (name || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function resolveFeatureCountryCode(feature, countryCodeByName) {
+    const rawCode = (feature?.properties?.['ISO3166-1-Alpha-3'] || '').trim();
+    if (rawCode && rawCode !== '-99') return rawCode;
+
+    const countryName = feature?.properties?.name || feature?.properties?.ADMIN || '';
+    return countryCodeByName.get(normalizeCountryName(countryName)) || null;
+}
+
 function renderMap() {
     const svg = document.getElementById('worldMap');
     const tooltip = document.getElementById('mapTooltip');
@@ -887,6 +906,11 @@ function renderMap() {
     // Use 1000x600 for better aspect ratio (matches viewBox)
     const width = 1000;
     const height = 600;
+    const countryCodeByName = new Map(
+        Object.entries(state.gdpData)
+            .filter(([, country]) => country?.name)
+            .map(([code, country]) => [normalizeCountryName(country.name), code])
+    );
 
     // Calculate rankings and stats for all countries
     const countryStats = [];
@@ -941,9 +965,16 @@ function renderMap() {
 
     // Process GeoJSON features
     state.geoData.features.forEach(feature => {
-        // Use ISO3166-1-Alpha-3 as the country code (GeoJSON property name)
-        const code = feature.properties['ISO3166-1-Alpha-3'];
         const countryName = feature.properties.name || feature.properties.ADMIN || 'Unknown';
+        const isoCode = (feature.properties['ISO3166-1-Alpha-3'] || '').trim();
+
+        // Antarctica dominates cylindrical maps visually and has no World Bank GDP coverage.
+        if (isoCode === 'ATA' || normalizeCountryName(countryName) === 'antarctica') {
+            return;
+        }
+
+        // GeoJSON uses -99 for some sovereigns (e.g., France/Norway), so fallback by name.
+        const code = resolveFeatureCountryCode(feature, countryCodeByName);
         const gdpCountry = state.gdpData[code];
         const pppCountry = state.pppData[code];
         const gdpVal = gdpCountry ? gdpCountry.values[year] : null;
@@ -959,10 +990,10 @@ function renderMap() {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', generatePathData(feature.geometry, width, height));
         path.setAttribute('fill', colorScale(gdpVal));
-        path.setAttribute('data-code', code);
+        path.setAttribute('data-code', code || '');
 
         // Highlight selected countries
-        const isSelected = state.selectedCountries.includes(code);
+        const isSelected = code ? state.selectedCountries.includes(code) : false;
         if (isSelected) {
             path.style.stroke = '#f59e0b';
             path.style.strokeWidth = '2';
@@ -1044,29 +1075,30 @@ function renderMap() {
     updateGlobalRankings(countryStats);
 }
 
-// Mercator projection for the world map
+// Miller cylindrical projection (less polar distortion than Mercator)
 function generatePathData(geometry, width, height) {
     if (!geometry) return "";
 
-    // Web Mercator projection with proper scaling
-    const maxLat = 85; // Clamp latitude to avoid infinite values
+    const minLat = -60;
+    const maxLat = 85;
+    const toMillerY = (lat) => {
+        const latRad = lat * Math.PI / 180;
+        return 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * latRad));
+    };
 
-    // Pre-calculate the Y bounds for the max latitude
-    const latRadMax = maxLat * Math.PI / 180;
-    const mercMax = Math.log(Math.tan(Math.PI / 4 + latRadMax / 2));
+    const millerMin = toMillerY(minLat);
+    const millerMax = toMillerY(maxLat);
 
     const project = (coords) => {
         const lon = coords[0];
-        let lat = Math.max(-maxLat, Math.min(maxLat, coords[1]));
+        const lat = Math.max(minLat, Math.min(maxLat, coords[1]));
 
         // X: linear mapping from -180..180 to 0..width
         const x = (lon + 180) * (width / 360);
 
-        // Y: Mercator projection, scaled to fit within height
-        const latRad = lat * Math.PI / 180;
-        const mercY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-        // Map mercY from [-mercMax, mercMax] to [height, 0]
-        const y = (height / 2) - (mercY / mercMax) * (height / 2);
+        // Y: Miller projection with clipped latitude range
+        const millerY = toMillerY(lat);
+        const y = ((millerMax - millerY) / (millerMax - millerMin)) * height;
 
         return `${x.toFixed(2)},${y.toFixed(2)}`;
     };
