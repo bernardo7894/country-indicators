@@ -13,6 +13,7 @@ An interactive macroeconomic data visualization tool to explore and compare **GD
 - **Interactive Controls**:
     - Multi-select countries with quick removal chips.
     - Responsive year range sliders (1960 - 2024).
+    - GDP mode toggle (Per Capita vs Total GDP).
     - Map animation ("Play" mode) to visualize economic growth over time.
 - **Data Insights**:
     - Automated comparative analysis between selected countries.

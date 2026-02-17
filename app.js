@@ -14,7 +14,8 @@ const FILES = {
     STATE_GDP_CONSTANT: 'US_States_GDP_PC_Constant.csv',
     STATE_PPP_CURRENT: 'US_States_PPP_PC_Current.csv',
     STATE_PPP_CONSTANT: 'US_States_PPP_PC_Constant.csv',
-    STATE_LIFE_EXPECTANCY: 'US_States_Life_Expectancy.csv'
+    STATE_LIFE_EXPECTANCY: 'US_States_Life_Expectancy.csv',
+    STATE_POPULATION: 'processing_files/US_States_Population_Calculated.csv'
 };
 
 const COLORS = [
@@ -23,6 +24,7 @@ const COLORS = [
 ];
 
 const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
+const POPULATION_API_URL = 'https://api.worldbank.org/v2/country/all/indicator/SP.POP.TOTL?format=json&per_page=20000';
 
 // App State
 const state = {
@@ -31,6 +33,8 @@ const state = {
     rawData: {
         gdpCurrent: {},
         gdpConstant: {},
+        gdpCurrentTotal: {},
+        gdpConstantTotal: {},
         pppCurrent: {},
         pppConstant: {},
         lifeExpectancy: {}
@@ -40,6 +44,7 @@ const state = {
     selectedCountries: [],
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
     priceType: 'constant', // 'current', 'constant'
+    gdpMode: 'per_capita', // 'per_capita', 'total'
     yearStart: 1990,
     yearEnd: 2024,
     mapYear: 2023,
@@ -64,12 +69,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 function updateActiveData() {
+    const gdpPerCapitaData = state.priceType === 'current' ?
+        state.rawData.gdpCurrent :
+        state.rawData.gdpConstant;
+    const gdpTotalData = state.priceType === 'current' ?
+        state.rawData.gdpCurrentTotal :
+        state.rawData.gdpConstantTotal;
+    const useTotalGdp = state.gdpMode === 'total' && state.currentView === 'gdp';
+
+    state.gdpData = useTotalGdp ? (gdpTotalData || gdpPerCapitaData) : gdpPerCapitaData;
+
     if (state.priceType === 'current') {
-        state.gdpData = state.rawData.gdpCurrent;
         state.pppData = state.rawData.pppCurrent;
     } else {
-        state.gdpData = state.rawData.gdpConstant;
-        state.gdpData = state.rawData.gdpConstant;
         state.pppData = state.rawData.pppConstant;
     }
     state.lifeExpectancyData = state.rawData.lifeExpectancy;
@@ -93,12 +105,30 @@ function setPriceType(type) {
     updateInsights();
 }
 
+function setGdpMode(mode) {
+    state.gdpMode = mode;
+
+    document.querySelectorAll('[data-gdp-mode]').forEach(btn => {
+        if (btn.dataset.gdpMode === mode) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    updateActiveData();
+    updateVisualization();
+    updateDataTable();
+    updateInsights();
+}
+
 
 async function init() {
     // 1. Fetch data
     const [
         gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, geoRaw,
-        stateGdpCur, stateGdpConst, statePppCur, statePppConst, lifeExpRaw, stateLifeExpRaw
+        stateGdpCur, stateGdpConst, statePppCur, statePppConst, lifeExpRaw, stateLifeExpRaw,
+        populationApiRaw, statePopulationRaw
     ] = await Promise.all([
         fetch(FILES.GDP_CURRENT).then(res => res.text()),
         fetch(FILES.GDP_CONSTANT).then(res => res.text()),
@@ -110,7 +140,9 @@ async function init() {
         fetch(FILES.STATE_PPP_CURRENT).then(res => res.text()),
         fetch(FILES.STATE_PPP_CONSTANT).then(res => res.text()),
         fetch(FILES.LIFE_EXPECTANCY).then(res => res.text()),
-        fetch(FILES.STATE_LIFE_EXPECTANCY).then(res => res.text())
+        fetch(FILES.STATE_LIFE_EXPECTANCY).then(res => res.text()),
+        fetch(POPULATION_API_URL).then(res => res.json()),
+        fetch(FILES.STATE_POPULATION).then(res => res.text())
     ]);
 
     // 2. Parse Country Data
@@ -127,6 +159,11 @@ async function init() {
     mergeStateData(statePppCur, 'pppCurrent');
     mergeStateData(statePppConst, 'pppConstant');
     mergeStateData(stateLifeExpRaw, 'lifeExpectancy');
+
+    const populationData = parsePopulationApiData(populationApiRaw);
+    mergeStatePopulationData(statePopulationRaw, populationData);
+    state.rawData.gdpCurrentTotal = buildTotalGdpData(state.rawData.gdpCurrent, populationData);
+    state.rawData.gdpConstantTotal = buildTotalGdpData(state.rawData.gdpConstant, populationData);
 
     state.geoData = geoRaw;
 
@@ -197,6 +234,10 @@ function saveSettings() {
     localStorage.setItem('gdp_explorer_year_end', state.yearEnd);
 }
 
+function createStateCode(name) {
+    return 'USA_ST_' + name.replace(/\s+/g, '_').toUpperCase();
+}
+
 function mergeStateData(csvText, targetKey) {
     const lines = csvText.trim().split('\n');
     const header = lines[0].split(',').map(h => h.trim());
@@ -217,7 +258,7 @@ function mergeStateData(csvText, targetKey) {
         const values = {};
 
         // Generate a unique ID for state to convert mixing with Country Codes
-        const code = 'USA_ST_' + name.replace(/\s+/g, '_').toUpperCase();
+        const code = createStateCode(name);
 
         for (let y = 0; y < years.length; y++) {
             const valIdx = y + 1;
@@ -295,6 +336,85 @@ function parseCSV(csvText) {
     }
 
     return data;
+}
+
+function parsePopulationApiData(apiResponse) {
+    const data = {};
+    const rows = Array.isArray(apiResponse) ? apiResponse[1] : null;
+    if (!Array.isArray(rows)) return data;
+
+    rows.forEach(entry => {
+        const code = (entry.countryiso3code || '').trim();
+        const year = (entry.date || '').toString().trim();
+        if (!code || !year) return;
+
+        if (!data[code]) {
+            data[code] = {
+                name: entry.country?.value || code,
+                values: {}
+            };
+        }
+
+        const value = entry.value;
+        data[code].values[year] = value === null || value === undefined ? null : Number(value);
+    });
+
+    return data;
+}
+
+function mergeStatePopulationData(csvText, targetPopulationData) {
+    const lines = csvText.trim().split('\n');
+    if (lines.length < 2) return;
+
+    const header = parseCSVLine(lines[0]);
+    const years = header.slice(1);
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+
+        const parts = parseCSVLine(line);
+        if (parts.length < 2) continue;
+
+        const name = parts[0];
+        const code = createStateCode(name);
+        const values = {};
+
+        for (let y = 0; y < years.length; y++) {
+            const valIdx = y + 1;
+            if (valIdx < parts.length) {
+                const val = parseFloat(parts[valIdx]);
+                values[years[y]] = isNaN(val) ? null : val;
+            }
+        }
+
+        targetPopulationData[code] = { name, values };
+    }
+}
+
+function buildTotalGdpData(gdpPerCapitaData, populationData) {
+    const totalData = {};
+
+    Object.keys(gdpPerCapitaData).forEach(code => {
+        const gdpCountry = gdpPerCapitaData[code];
+        const popCountry = populationData[code];
+        const values = {};
+
+        Object.keys(gdpCountry.values).forEach(year => {
+            const gdpVal = gdpCountry.values[year];
+            const popVal = popCountry?.values?.[year];
+            values[year] = (gdpVal !== null && gdpVal !== undefined && popVal !== null && popVal !== undefined) ?
+                (gdpVal * popVal) :
+                null;
+        });
+
+        totalData[code] = {
+            name: gdpCountry.name,
+            values
+        };
+    });
+
+    return totalData;
 }
 
 // ============================================
@@ -459,14 +579,17 @@ function setupEventListeners() {
                 document.getElementById('mapYearControl').style.display = 'block';
                 document.getElementById('dataTableContainer').style.display = 'none';
                 document.getElementById('globalRankingsContainer').style.display = 'block';
-                renderMap();
             } else {
                 document.getElementById('chartContainer').style.display = 'block';
                 document.getElementById('mapContainer').style.display = 'none';
                 document.getElementById('mapYearControl').style.display = 'none';
                 document.getElementById('dataTableContainer').style.display = 'block';
                 document.getElementById('globalRankingsContainer').style.display = 'none';
-                updateVisualization();
+            }
+
+            const gdpModeControl = document.getElementById('gdpModeControl');
+            if (gdpModeControl) {
+                gdpModeControl.style.display = state.currentView === 'gdp' ? 'block' : 'none';
             }
 
             // Handle Price Type Restrictions
@@ -481,6 +604,7 @@ function setupEventListeners() {
                 priceBtns.forEach(b => b.disabled = false);
             }
 
+            updateVisualization();
             // Update insights to reflect current view's data source
             updateInsights();
         });
@@ -492,6 +616,14 @@ function setupEventListeners() {
             if (state.currentView === 'ratio') return; // Prevent change in PLI mode
             const type = btn.dataset.price;
             setPriceType(type);
+        });
+    });
+
+    // GDP Mode Buttons
+    document.querySelectorAll('[data-gdp-mode]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.gdpMode;
+            setGdpMode(mode);
         });
     });
 
@@ -629,6 +761,8 @@ function togglePlay() {
 // ============================================
 
 function updateVisualization() {
+    updateActiveData();
+
     if (state.currentView === 'map') {
         renderMap();
         return;
@@ -649,9 +783,9 @@ function renderChart() {
 
     switch (state.currentView) {
         case 'gdp':
-            title = state.priceType === 'current' ?
-                'GDP per Capita (Current US$)' :
-                'GDP per Capita (Constant 2015 US$)';
+            title = state.gdpMode === 'total' ?
+                (state.priceType === 'current' ? 'GDP (Current US$)' : 'GDP (Constant 2015 US$)') :
+                (state.priceType === 'current' ? 'GDP per Capita (Current US$)' : 'GDP per Capita (Constant 2015 US$)');
             yAxisLabel = 'USD';
             datasets = createDatasets(state.gdpData, years);
             break;
@@ -1132,7 +1266,8 @@ function updateDataTable() {
     if (gdpHeader && pppHeader) {
         const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015'; // 2015/2021 simplification
         const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
-        gdpHeader.innerHTML = `GDP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        const gdpLabel = (state.currentView === 'gdp' && state.gdpMode === 'total') ? 'GDP' : 'GDP per Capita';
+        gdpHeader.innerHTML = `${gdpLabel} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
         if (state.currentView !== 'life_expectancy') {
             pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
         } else {
@@ -1277,9 +1412,11 @@ function updateInsights() {
     // Determine which data source to use based on current view
     const usePPP = state.currentView === 'ppp';
     const useLifeExp = state.currentView === 'life_expectancy';
+    const useTotalGdp = state.currentView === 'gdp' && state.gdpMode === 'total';
     const dataSource = useLifeExp ? state.lifeExpectancyData : (usePPP ? state.pppData : state.gdpData);
     const dataLabel = useLifeExp ? 'Life Expectancy' : (usePPP ? 'PPP' : 'GDP');
     const currencyLabel = useLifeExp ? 'years' : (usePPP ? 'Int\'l $' : 'USD');
+    const perCapitaSuffix = useLifeExp ? '' : (usePPP ? ' per capita' : (useTotalGdp ? '' : ' per capita'));
 
     // Use the user's selected year range
     const startYear = state.yearStart;
@@ -1323,7 +1460,7 @@ function updateInsights() {
     // Key Insights content
     const leader = countryStats[0];
     let insightHTML = `
-        <p><span class="insight-highlight">${leader.name}</span> leads with ${dataLabel} per capita of 
+        <p><span class="insight-highlight">${leader.name}</span> leads with ${dataLabel}${perCapitaSuffix} of 
         <span class="insight-highlight">${useLifeExp ? leader.endVal.toFixed(1) : '$' + Math.round(leader.endVal).toLocaleString()}</span> (${currencyLabel}) in ${endYear}.</p>
     `;
 
@@ -1336,7 +1473,7 @@ function updateInsights() {
     // Add growth summary based on selected period
     if (leader.growthPeriod !== null && leader.startVal) {
         const growthDir = leader.growthPeriod >= 0 ? 'grew' : 'declined';
-        insightHTML += `<p>${dataLabel} per capita ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growthPeriod).toFixed(1)}%</span> from ${startYear} to ${endYear}.</p>`;
+        insightHTML += `<p>${dataLabel}${perCapitaSuffix} ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growthPeriod).toFixed(1)}%</span> from ${startYear} to ${endYear}.</p>`;
         if (leader.cagr !== null && yearSpan > 1) {
             insightHTML += `<p>Avg. annual growth (CAGR): <span class="insight-highlight">${leader.cagr >= 0 ? '+' : ''}${leader.cagr.toFixed(2)}%</span></p>`;
         }
