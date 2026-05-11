@@ -1,51 +1,57 @@
 /* ============================================
-   Global GDP Explorer - Professional Design
-   Clean, data-focused aesthetic with dark mode
+   Country Indicators Explorer
+   Stable, data-focused interface with custom SVGs
    ============================================ */
 
 /* Design Tokens - Light Mode (Default) */
 :root {
     /* Neutral Palette */
-    --color-bg: #ffffff;
-    --color-bg-alt: #f8f9fa;
+    --color-bg: #fbfcfb;
+    --color-bg-alt: #f3f5f1;
     --color-bg-card: #ffffff;
-    --color-border: #e5e7eb;
-    --color-border-strong: #d1d5db;
+    --color-bg-raised: #f8faf6;
+    --color-border: #dde3da;
+    --color-border-strong: #c8d1c3;
 
     /* Text */
-    --color-text: #1f2937;
-    --color-text-secondary: #6b7280;
-    --color-text-muted: #9ca3af;
+    --color-text: #1f2a24;
+    --color-text-secondary: #5d6a61;
+    --color-text-muted: #879189;
 
-    /* Accent - Restrained Blue */
-    --color-primary: #2563eb;
-    --color-primary-hover: #1d4ed8;
-    --color-primary-light: #eff6ff;
+    /* Accent */
+    --color-primary: #0f766e;
+    --color-primary-hover: #0b5f59;
+    --color-primary-light: #e2f3ee;
+    --color-accent: #b7791f;
+    --color-accent-light: #fff1d6;
 
     /* Data Colors - Accessible & Distinct */
-    --chart-1: #2563eb;
-    --chart-2: #059669;
-    --chart-3: #dc2626;
-    --chart-4: #7c3aed;
-    --chart-5: #ea580c;
-    --chart-6: #0891b2;
-    --chart-7: #be185d;
-    --chart-8: #4f46e5;
+    --chart-1: #0f766e;
+    --chart-2: #b7791f;
+    --chart-3: #7c3aed;
+    --chart-4: #c2410c;
+    --chart-5: #be123c;
+    --chart-6: #2563eb;
+    --chart-7: #4d7c0f;
+    --chart-8: #9333ea;
 
     /* Semantic */
     --color-success: #059669;
     --color-danger: #dc2626;
 
     /* Chart Theming */
-    --chart-grid: #f3f4f6;
-    --chart-text: #6b7280;
-    --chart-border: #e5e7eb;
-    --chart-tooltip-bg: #1f2937;
+    --chart-grid: #e9eee6;
+    --chart-text: #5d6a61;
+    --chart-border: #d9e1d6;
+    --chart-tooltip-bg: #1f2a24;
     --chart-tooltip-text: #ffffff;
 
     /* Map */
-    --map-no-data: #f3f4f6;
-    --map-stroke: #e5e7eb;
+    --map-ocean: #eaf1ed;
+    --map-graticule: rgba(77, 96, 83, 0.2);
+    --map-no-data: #e3e7df;
+    --map-stroke: rgba(31, 42, 36, 0.28);
+    --map-selected: #c05621;
 
     /* Spacing Scale */
     --space-1: 4px;
@@ -59,7 +65,7 @@
     --space-12: 48px;
 
     /* Typography */
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 
     --text-xs: 0.75rem;
@@ -73,40 +79,47 @@
     --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 8px;
+    --radius-full: 999px;
 
     /* Shadows */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
     --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 18px 40px rgba(31, 42, 36, 0.08);
 }
 
 /* Dark Mode - System Preference */
 @media (prefers-color-scheme: dark) {
     :root:not(.light-mode) {
-        --color-bg: #0f0f0f;
-        --color-bg-alt: #171717;
-        --color-bg-card: #1a1a1a;
-        --color-border: #2e2e2e;
-        --color-border-strong: #404040;
+        --color-bg: #0e1110;
+        --color-bg-alt: #151916;
+        --color-bg-card: #191f1b;
+        --color-bg-raised: #202720;
+        --color-border: #2d372f;
+        --color-border-strong: #425044;
 
-        --color-text: #f5f5f5;
-        --color-text-secondary: #a3a3a3;
-        --color-text-muted: #737373;
+        --color-text: #f3f6f1;
+        --color-text-secondary: #b0b9ad;
+        --color-text-muted: #7f8b82;
 
-        --color-primary: #3b82f6;
-        --color-primary-hover: #2563eb;
-        --color-primary-light: rgba(59, 130, 246, 0.15);
+        --color-primary: #37b6a7;
+        --color-primary-hover: #5fd0c2;
+        --color-primary-light: rgba(55, 182, 167, 0.16);
+        --color-accent: #d49a39;
+        --color-accent-light: rgba(212, 154, 57, 0.16);
 
         --color-success: #10b981;
         --color-danger: #ef4444;
 
-        --chart-grid: #262626;
-        --chart-text: #a3a3a3;
-        --chart-border: #2e2e2e;
-        --chart-tooltip-bg: #262626;
+        --chart-grid: #263027;
+        --chart-text: #b0b9ad;
+        --chart-border: #2d372f;
+        --chart-tooltip-bg: #202720;
         --chart-tooltip-text: #f5f5f5;
 
-        --map-no-data: #262626;
-        --map-stroke: #404040;
+        --map-ocean: #17231f;
+        --map-graticule: rgba(200, 218, 202, 0.16);
+        --map-no-data: #263027;
+        --map-stroke: rgba(213, 225, 214, 0.28);
 
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
         --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -115,31 +128,36 @@
 
 /* Dark Mode - Manual Toggle */
 :root.dark-mode {
-    --color-bg: #0f0f0f;
-    --color-bg-alt: #171717;
-    --color-bg-card: #1a1a1a;
-    --color-border: #2e2e2e;
-    --color-border-strong: #404040;
+    --color-bg: #0e1110;
+    --color-bg-alt: #151916;
+    --color-bg-card: #191f1b;
+    --color-bg-raised: #202720;
+    --color-border: #2d372f;
+    --color-border-strong: #425044;
 
-    --color-text: #f5f5f5;
-    --color-text-secondary: #a3a3a3;
-    --color-text-muted: #737373;
+    --color-text: #f3f6f1;
+    --color-text-secondary: #b0b9ad;
+    --color-text-muted: #7f8b82;
 
-    --color-primary: #3b82f6;
-    --color-primary-hover: #2563eb;
-    --color-primary-light: rgba(59, 130, 246, 0.15);
+    --color-primary: #37b6a7;
+    --color-primary-hover: #5fd0c2;
+    --color-primary-light: rgba(55, 182, 167, 0.16);
+    --color-accent: #d49a39;
+    --color-accent-light: rgba(212, 154, 57, 0.16);
 
     --color-success: #10b981;
     --color-danger: #ef4444;
 
-    --chart-grid: #262626;
-    --chart-text: #a3a3a3;
-    --chart-border: #2e2e2e;
-    --chart-tooltip-bg: #262626;
+    --chart-grid: #263027;
+    --chart-text: #b0b9ad;
+    --chart-border: #2d372f;
+    --chart-tooltip-bg: #202720;
     --chart-tooltip-text: #f5f5f5;
 
-    --map-no-data: #262626;
-    --map-stroke: #404040;
+    --map-ocean: #17231f;
+    --map-graticule: rgba(200, 218, 202, 0.16);
+    --map-no-data: #263027;
+    --map-stroke: rgba(213, 225, 214, 0.28);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -162,15 +180,24 @@ html {
 
 body {
     font-family: var(--font-sans);
-    background: var(--color-bg-alt);
+    background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 360px),
+        linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-alt) 100%);
     color: var(--color-text);
     line-height: 1.5;
     min-height: 100vh;
 }
 
+.icon-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
 /* Layout */
 .app-container {
-    max-width: 1400px;
+    max-width: 1520px;
     margin: 0 auto;
     padding: var(--space-6);
 }
@@ -182,7 +209,7 @@ body {
     border-radius: var(--radius-lg);
     padding: var(--space-5) var(--space-6);
     margin-bottom: var(--space-6);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-lg);
 }
 
 .header-content {
@@ -200,26 +227,32 @@ body {
 }
 
 .logo-icon {
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-primary);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
     border-radius: var(--radius-md);
     color: white;
 }
 
 .logo-icon svg {
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
 }
 
 .logo h1 {
     font-size: var(--text-xl);
-    font-weight: 600;
+    font-weight: 700;
     color: var(--color-text);
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
+}
+
+.logo p {
+    margin-top: 1px;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
 }
 
 .header-actions {
@@ -282,6 +315,7 @@ body {
 
 .stat-item {
     text-align: right;
+    min-width: 80px;
 }
 
 .stat-value {
@@ -301,7 +335,7 @@ body {
 /* Main Content */
 .main-content {
     display: grid;
-    grid-template-columns: 1fr 260px;
+    grid-template-columns: minmax(0, 1fr) 300px;
     grid-template-rows: auto 1fr;
     gap: var(--space-6);
 }
@@ -309,21 +343,47 @@ body {
 /* Control Panel */
 .control-panel {
     grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--space-6);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: end;
+    gap: var(--space-4);
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-5) var(--space-6);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
 }
 
 .control-group {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    min-width: 0;
+}
+
+.view-control {
+    grid-column: 1 / -1;
+}
+
+.compact-control {
+    grid-column: span 2;
+}
+
+.search-control {
+    grid-column: span 4;
+}
+
+.year-controls {
+    grid-column: span 2;
+}
+
+.control-hidden {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.control-muted {
+    opacity: 0.55;
 }
 
 .control-label {
@@ -340,13 +400,24 @@ body {
     background: var(--color-bg-alt);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    padding: 2px;
+    padding: 3px;
+    min-height: 42px;
+}
+
+.primary-tabs {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 3px;
+    width: 100%;
 }
 
 .view-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--space-2);
+    min-width: 0;
+    min-height: 36px;
     padding: var(--space-2) var(--space-3);
     background: transparent;
     border: none;
@@ -357,6 +428,8 @@ body {
     cursor: pointer;
     transition: all 0.15s ease;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .view-btn:hover {
@@ -384,7 +457,9 @@ body {
 }
 
 .btn-icon {
-    font-size: var(--text-base);
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
 }
 
 /* Country Selector */
@@ -429,7 +504,7 @@ body {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 2px 6px 2px 8px;
+    padding: 3px 6px 3px 8px;
     background: var(--color-primary-light);
     border: 1px solid var(--color-primary);
     border-radius: var(--radius-sm);
@@ -460,12 +535,6 @@ body {
 }
 
 /* Year Controls */
-.year-controls {
-    flex: 1;
-    min-width: 180px;
-    max-width: 280px;
-}
-
 .year-range-container {
     display: flex;
     flex-direction: column;
@@ -522,7 +591,15 @@ body {
 .map-year-container {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
+}
+
+.country-chip small {
+    color: var(--color-text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .year-value {
@@ -534,6 +611,12 @@ body {
 }
 
 .play-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    min-width: 78px;
+    min-height: 34px;
     padding: var(--space-2) var(--space-3);
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
@@ -564,7 +647,7 @@ body {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
 }
 
 .chart-header {
@@ -578,6 +661,7 @@ body {
 
 .chart-title {
     font-size: var(--text-base);
+    line-height: 1.3;
     font-weight: 600;
     color: var(--color-text);
 }
@@ -623,11 +707,10 @@ body {
     position: relative;
     width: 100%;
     height: 0;
-    padding-bottom: 60%;
-    /* 600/1000 = 60% aspect ratio */
+    padding-bottom: 56%;
     overflow: hidden;
     border-radius: var(--radius-md);
-    background: var(--color-bg-alt);
+    background: var(--map-ocean);
     border: 1px solid var(--color-border);
 }
 
@@ -640,14 +723,33 @@ body {
 }
 
 #worldMap path {
-    stroke: var(--color-border);
+    stroke: var(--map-stroke);
     stroke-width: 0.5;
     cursor: pointer;
+    transition: fill 0.16s ease, stroke-width 0.16s ease, opacity 0.16s ease;
 }
 
 #worldMap path:hover {
     stroke: var(--color-text-secondary);
     stroke-width: 1;
+}
+
+.map-ocean-shape {
+    fill: var(--map-ocean);
+    stroke: var(--color-border);
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+.map-graticule {
+    fill: none;
+    stroke: var(--map-graticule);
+    stroke-width: 0.7;
+    pointer-events: none;
+}
+
+.map-country {
+    filter: drop-shadow(0 0 0 transparent);
 }
 
 .map-tooltip {
@@ -701,11 +803,11 @@ body {
     height: 8px;
     border-radius: 2px;
     background: linear-gradient(to right,
-            #dbeafe,
-            #93c5fd,
-            #3b82f6,
-            #1d4ed8,
-            #1e3a8a);
+            #f3efd0,
+            #d8bd68,
+            #86a873,
+            #3c887c,
+            #23516a);
     border: 1px solid var(--color-border);
 }
 
@@ -722,7 +824,7 @@ body {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-5);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
 }
 
 .table-header {
@@ -772,6 +874,22 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+.entity-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.entity-name {
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+.entity-meta {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+}
+
 .positive {
     color: var(--color-success);
     font-weight: 500;
@@ -794,7 +912,7 @@ body {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-4);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
 }
 
 .insight-title {
@@ -805,6 +923,13 @@ body {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+}
+
+.section-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--color-primary);
+    flex: 0 0 18px;
 }
 
 .insight-content {
@@ -832,6 +957,7 @@ body {
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     background: var(--color-bg-alt);
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
 }
@@ -946,6 +1072,19 @@ body {
         grid-template-columns: 1fr;
     }
 
+    .control-panel {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .compact-control,
+    .year-controls {
+        grid-column: span 2;
+    }
+
+    .search-control {
+        grid-column: span 4;
+    }
+
     .insights-panel {
         flex-direction: row;
         flex-wrap: wrap;
@@ -972,24 +1111,23 @@ body {
     }
 
     .control-panel {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         align-items: stretch;
     }
 
-    .control-group {
-        width: 100%;
+    .view-control,
+    .compact-control,
+    .search-control,
+    .year-controls {
+        grid-column: 1;
     }
 
-    .view-mode-selector {
-        flex-wrap: wrap;
+    .primary-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .country-selector {
         min-width: 100%;
-    }
-
-    .year-controls {
-        max-width: 100%;
     }
 
     .chart-wrapper {
@@ -998,6 +1136,7 @@ body {
 
     .map-wrapper {
         height: 280px;
+        padding-bottom: 0;
     }
 }
 
@@ -1261,14 +1400,23 @@ input:focus-visible {
     opacity: 1;
 }
 
-/* Global Rankings Table - Premium Design */
+/* Global Rankings Table */
 .global-rankings-table {
     margin-top: var(--space-4);
     background: var(--color-bg-card);
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
     overflow: hidden;
+}
+
+.search-result-type {
+    font-size: 10px;
+    color: var(--color-accent);
+    background: var(--color-accent-light);
+    border-radius: var(--radius-full);
+    padding: 2px 6px;
+    white-space: nowrap;
 }
 
 .global-rankings-table .table-header {
@@ -1276,15 +1424,15 @@ input:focus-visible {
     justify-content: space-between;
     align-items: center;
     padding: var(--space-4) var(--space-5);
-    background: linear-gradient(135deg, var(--color-primary) 0%, #1e40af 100%);
-    border-bottom: none;
+    background: var(--color-bg-raised);
+    border-bottom: 1px solid var(--color-border);
     flex-wrap: wrap;
     gap: var(--space-3);
 }
 
 .global-rankings-table .table-header h3 {
-    color: white;
-    font-size: var(--text-lg);
+    color: var(--color-text);
+    font-size: var(--text-base);
     font-weight: 600;
     margin: 0;
     display: flex;
@@ -1292,10 +1440,11 @@ input:focus-visible {
     gap: var(--space-2);
 }
 
-.global-rankings-table .table-header h3 span {
-    background: rgba(255, 255, 255, 0.2);
+.global-rankings-table .table-header .header-year {
+    background: var(--color-accent-light);
+    color: var(--color-accent);
     padding: 2px 8px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     font-size: var(--text-sm);
 }
 
@@ -1307,35 +1456,32 @@ input:focus-visible {
 
 .ranking-search {
     padding: var(--space-2) var(--space-4);
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
-    color: white;
+    color: var(--color-text);
     font-size: var(--text-sm);
     width: 200px;
-    backdrop-filter: blur(4px);
 }
 
 .ranking-search::placeholder {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--color-text-muted);
 }
 
 .ranking-search:focus {
     outline: none;
-    border-color: white;
-    background: rgba(255, 255, 255, 0.25);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .ranking-metric-select {
     padding: var(--space-2) var(--space-4);
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
-    color: white;
+    color: var(--color-text);
     font-size: var(--text-sm);
     cursor: pointer;
-    backdrop-filter: blur(4px);
 }
 
 .ranking-metric-select option {

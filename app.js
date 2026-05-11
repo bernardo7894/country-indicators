@@ -1,5 +1,5 @@
 /**
- * Global GDP Explorer - Interactive Visualization Logic
+ * Country Indicators Explorer - Interactive Visualization Logic
  * Handles data parsing, state management, and visualization rendering.
  */
 
@@ -10,6 +10,7 @@ const FILES = {
     PPP_CURRENT: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv',
     PPP_CONSTANT: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv',
     LIFE_EXPECTANCY: 'life_expectancy.csv',
+    PPP_CONVERSION: 'countries_ppp_conversion_factor.csv',
     STATE_GDP_CURRENT: 'US_States_GDP_PC_Current.csv',
     STATE_GDP_CONSTANT: 'US_States_GDP_PC_Constant.csv',
     STATE_PPP_CURRENT: 'US_States_PPP_PC_Current.csv',
@@ -19,9 +20,50 @@ const FILES = {
 };
 
 const COLORS = [
-    '#2563eb', '#059669', '#dc2626', '#7c3aed', '#ea580c',
-    '#0891b2', '#be185d', '#4f46e5', '#65a30d', '#0d9488'
+    '#0f766e', '#b7791f', '#7c3aed', '#c2410c', '#be123c',
+    '#2563eb', '#4d7c0f', '#9333ea', '#0891b2', '#ca8a04'
 ];
+
+const DEFAULT_COUNTRY_CODES = ['USA', 'CHN', 'IND', 'DEU', 'BRA'];
+const DEFAULT_STATE_CODES = [
+    'USA_ST_CALIFORNIA',
+    'USA_ST_TEXAS',
+    'USA_ST_NEW_YORK',
+    'USA_ST_FLORIDA',
+    'USA_ST_WASHINGTON'
+];
+
+const AGGREGATE_CODES = new Set([
+    'AFE', 'AFW', 'ARB', 'CEB', 'CSS', 'EAP', 'EAR', 'EAS', 'ECA', 'ECS',
+    'EMU', 'EUU', 'FCS', 'HIC', 'HPC', 'IBD', 'IBT', 'IDA', 'IDB', 'IDX',
+    'INX', 'LAC', 'LCN', 'LDC', 'LIC', 'LMC', 'LMY', 'LTE', 'MEA', 'MIC',
+    'MNA', 'NAC', 'OED', 'OSS', 'PRE', 'PST', 'SAS', 'SSA', 'SSF', 'SST',
+    'TEA', 'TEC', 'TLA', 'TMN', 'TSA', 'TSS', 'UMC', 'WLD'
+]);
+
+const ENTITY_SCOPE_LABELS = {
+    countries: 'Countries',
+    states: 'U.S. States',
+    all: 'All entities'
+};
+
+const VIEW_LABELS = {
+    gdp: 'GDP',
+    ppp: 'PPP',
+    compare: 'GDP vs PPP',
+    ratio: 'Price Level Index',
+    life_expectancy: 'Life Expectancy',
+    population: 'Population',
+    growth: 'GDP Growth',
+    map: 'Map'
+};
+
+const MAP_COLOR_RAMPS = {
+    sequential: ['#f4efd0', '#d9be64', '#87a86e', '#3d887c', '#23516a'],
+    health: ['#f5e9cc', '#e2b664', '#b8794c', '#75656e', '#2f5b6c'],
+    population: ['#efe8d0', '#d4a95e', '#b67847', '#7f646a', '#31576f'],
+    diverging: ['#b42318', '#d98f45', '#f2dfb1', '#78a878', '#176b63']
+};
 
 const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
 const POPULATION_API_URL = 'https://api.worldbank.org/v2/country/all/indicator/SP.POP.TOTL?format=json&per_page=20000';
@@ -37,17 +79,26 @@ const state = {
         gdpConstantTotal: {},
         pppCurrent: {},
         pppConstant: {},
-        lifeExpectancy: {}
+        lifeExpectancy: {},
+        population: {},
+        pppConversion: {}
     },
     lifeExpectancyData: {},
+    populationData: {},
+    pppConversionData: {},
     countries: [],
+    allEntities: [],
+    countryCodes: new Set(),
+    subdivisionCodes: new Set(),
     selectedCountries: [],
+    entityScope: 'countries',
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
     priceType: 'constant', // 'current', 'constant'
     gdpMode: 'per_capita', // 'per_capita', 'total'
     yearStart: 1990,
     yearEnd: 2024,
     mapYear: 2023,
+    mapMetric: 'gdp',
     chart: null,
     geoData: null,
     isPlaying: false,
@@ -85,6 +136,8 @@ function updateActiveData() {
         state.pppData = state.rawData.pppConstant;
     }
     state.lifeExpectancyData = state.rawData.lifeExpectancy;
+    state.populationData = state.rawData.population;
+    state.pppConversionData = state.rawData.pppConversion;
 }
 
 function setPriceType(type) {
@@ -126,7 +179,7 @@ function setGdpMode(mode) {
 async function init() {
     // 1. Fetch data
     const [
-        gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, geoRaw,
+        gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, pppConversionRaw, geoRaw,
         stateGdpCur, stateGdpConst, statePppCur, statePppConst, lifeExpRaw, stateLifeExpRaw,
         populationApiRaw, statePopulationRaw
     ] = await Promise.all([
@@ -134,6 +187,7 @@ async function init() {
         fetch(FILES.GDP_CONSTANT).then(res => res.text()),
         fetch(FILES.PPP_CURRENT).then(res => res.text()),
         fetch(FILES.PPP_CONSTANT).then(res => res.text()),
+        fetch(FILES.PPP_CONVERSION).then(res => res.text()),
         fetch(GEOJSON_URL).then(res => res.json()),
         fetch(FILES.STATE_GDP_CURRENT).then(res => res.text()),
         fetch(FILES.STATE_GDP_CONSTANT).then(res => res.text()),
@@ -142,16 +196,20 @@ async function init() {
         fetch(FILES.LIFE_EXPECTANCY).then(res => res.text()),
         fetch(FILES.STATE_LIFE_EXPECTANCY).then(res => res.text()),
         fetch(POPULATION_API_URL).then(res => res.json()),
-        fetch(FILES.STATE_POPULATION).then(res => res.text())
+        fetchOptionalText(FILES.STATE_POPULATION)
     ]);
 
     // 2. Parse Country Data
     state.rawData.gdpCurrent = parseCSV(gdpCurRaw);
     state.rawData.gdpConstant = parseCSV(gdpConstRaw);
     state.rawData.pppCurrent = parseCSV(pppCurRaw);
-    state.rawData.pppCurrent = parseCSV(pppCurRaw);
     state.rawData.pppConstant = parseCSV(pppConstRaw);
     state.rawData.lifeExpectancy = parseCSV(lifeExpRaw);
+    state.rawData.pppConversion = parseWorldBankWideCSV(pppConversionRaw);
+
+    tagWorldBankEntities();
+    state.countryCodes = new Set(Object.keys(state.rawData.gdpCurrent)
+        .filter(code => !AGGREGATE_CODES.has(code)));
 
     // 3. Parse and Merge State Data
     mergeStateData(stateGdpCur, 'gdpCurrent');
@@ -161,7 +219,10 @@ async function init() {
     mergeStateData(stateLifeExpRaw, 'lifeExpectancy');
 
     const populationData = parsePopulationApiData(populationApiRaw);
-    mergeStatePopulationData(statePopulationRaw, populationData);
+    if (statePopulationRaw) {
+        mergeStatePopulationData(statePopulationRaw, populationData);
+    }
+    state.rawData.population = populationData;
     state.rawData.gdpCurrentTotal = buildTotalGdpData(state.rawData.gdpCurrent, populationData);
     state.rawData.gdpConstantTotal = buildTotalGdpData(state.rawData.gdpConstant, populationData);
 
@@ -170,11 +231,9 @@ async function init() {
     // Set initial active data
     updateActiveData();
 
-    // 4. Extract country list (use current GDP as base)
-    state.countries = Object.keys(state.rawData.gdpCurrent).map(code => ({
-        code,
-        name: state.rawData.gdpCurrent[code].name
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    // 4. Extract selectable entity lists
+    refreshSelectableEntities();
+    state.selectedCountries = DEFAULT_COUNTRY_CODES.filter(code => state.countryCodes.has(code));
 
     // 5. Setup UI
     setupEventListeners();
@@ -255,6 +314,7 @@ function mergeStateData(csvText, targetKey) {
         if (parts.length < 2) continue;
 
         const name = parts[0];
+        if (normalizeCountryName(name) === 'united states') continue;
         const values = {};
 
         // Generate a unique ID for state to convert mixing with Country Codes
@@ -270,7 +330,14 @@ function mergeStateData(csvText, targetKey) {
             }
         }
 
-        target[code] = { name, values };
+        target[code] = {
+            name,
+            values,
+            type: 'subdivision',
+            scopeLabel: 'U.S. state',
+            parentCode: 'USA'
+        };
+        state.subdivisionCodes.add(code);
     }
 }
 
@@ -332,10 +399,68 @@ function parseCSV(csvText) {
             values[year.trim()] = isNaN(val) ? null : val;
         }
 
-        data[code] = { name, values };
+        data[code] = { name, values, type: AGGREGATE_CODES.has(code) ? 'aggregate' : 'country' };
     }
 
     return data;
+}
+
+function parseWorldBankWideCSV(csvText) {
+    const lines = csvText.trim().split('\n');
+    const data = {};
+    if (lines.length < 2) return data;
+
+    const headers = parseCSVLine(lines[0]);
+    const yearColumns = headers.map((header, index) => {
+        const match = header.match(/(\d{4})/);
+        return match ? { year: match[1], index } : null;
+    }).filter(Boolean);
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+
+        const parts = parseCSVLine(line);
+        const name = parts[2];
+        const code = parts[3];
+        if (!name || !code) continue;
+
+        const values = {};
+        yearColumns.forEach(({ year, index }) => {
+            const raw = parts[index];
+            const value = parseFloat(raw);
+            values[year] = raw && raw !== '..' && !isNaN(value) ? value : null;
+        });
+
+        data[code] = {
+            name,
+            values,
+            type: AGGREGATE_CODES.has(code) ? 'aggregate' : 'country'
+        };
+    }
+
+    return data;
+}
+
+async function fetchOptionalText(url) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) return '';
+        return await response.text();
+    } catch (error) {
+        console.info(`Optional data file unavailable: ${url}`);
+        return '';
+    }
+}
+
+function tagWorldBankEntities() {
+    Object.values(state.rawData).forEach(dataset => {
+        Object.entries(dataset).forEach(([code, entry]) => {
+            if (!entry) return;
+            entry.type = AGGREGATE_CODES.has(code) ? 'aggregate' : 'country';
+            entry.scopeLabel = entry.type === 'aggregate' ? 'aggregate' : 'country';
+        });
+    });
 }
 
 function parsePopulationApiData(apiResponse) {
@@ -351,7 +476,9 @@ function parsePopulationApiData(apiResponse) {
         if (!data[code]) {
             data[code] = {
                 name: entry.country?.value || code,
-                values: {}
+                values: {},
+                type: AGGREGATE_CODES.has(code) ? 'aggregate' : 'country',
+                scopeLabel: AGGREGATE_CODES.has(code) ? 'aggregate' : 'country'
             };
         }
 
@@ -377,6 +504,7 @@ function mergeStatePopulationData(csvText, targetPopulationData) {
         if (parts.length < 2) continue;
 
         const name = parts[0];
+        if (normalizeCountryName(name) === 'united states') continue;
         const code = createStateCode(name);
         const values = {};
 
@@ -388,7 +516,14 @@ function mergeStatePopulationData(csvText, targetPopulationData) {
             }
         }
 
-        targetPopulationData[code] = { name, values };
+        targetPopulationData[code] = {
+            name,
+            values,
+            type: 'subdivision',
+            scopeLabel: 'U.S. state',
+            parentCode: 'USA'
+        };
+        state.subdivisionCodes.add(code);
     }
 }
 
@@ -410,11 +545,97 @@ function buildTotalGdpData(gdpPerCapitaData, populationData) {
 
         totalData[code] = {
             name: gdpCountry.name,
-            values
+            values,
+            type: gdpCountry.type,
+            scopeLabel: gdpCountry.scopeLabel,
+            parentCode: gdpCountry.parentCode
         };
     });
 
     return totalData;
+}
+
+function isCountryCode(code) {
+    return state.countryCodes.has(code);
+}
+
+function isSubdivisionCode(code) {
+    return state.subdivisionCodes.has(code);
+}
+
+function getEntityMeta(code) {
+    const source =
+        state.rawData.gdpCurrent[code] ||
+        state.rawData.pppCurrent[code] ||
+        state.rawData.lifeExpectancy[code] ||
+        state.rawData.population[code] ||
+        state.rawData.pppConversion[code];
+
+    if (!source) {
+        return { code, name: code, type: 'unknown', scopeLabel: 'data' };
+    }
+
+    const type = isSubdivisionCode(code) ? 'subdivision' : (AGGREGATE_CODES.has(code) ? 'aggregate' : 'country');
+    return {
+        code,
+        name: source.name || code,
+        type,
+        scopeLabel: type === 'subdivision' ? 'U.S. state' : (type === 'aggregate' ? 'aggregate' : 'country')
+    };
+}
+
+function getSelectableCodesForScope(scope = state.entityScope) {
+    const countries = [...state.countryCodes].filter(code => state.rawData.gdpCurrent[code]);
+    const subdivisions = [...state.subdivisionCodes].filter(code => state.rawData.gdpCurrent[code]);
+
+    if (scope === 'states') return subdivisions;
+    if (scope === 'all') return [...countries, ...subdivisions];
+    return countries;
+}
+
+function refreshSelectableEntities() {
+    const allCodes = [...new Set([...state.countryCodes, ...state.subdivisionCodes])];
+    state.allEntities = allCodes
+        .map(getEntityMeta)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    state.countries = getSelectableCodesForScope()
+        .map(getEntityMeta)
+        .sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'country' ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+}
+
+function escapeHTML(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getScopeEmptyLabel() {
+    return state.entityScope === 'states' ? 'U.S. State Overview' :
+        state.entityScope === 'all' ? 'Country and State Overview' :
+            'Country Overview';
+}
+
+function getDefaultCodesForScope(scope) {
+    if (scope === 'states') return DEFAULT_STATE_CODES;
+    if (scope === 'all') return [...DEFAULT_COUNTRY_CODES, ...DEFAULT_STATE_CODES.slice(0, 2)];
+    return DEFAULT_COUNTRY_CODES;
+}
+
+function updateHeaderStats() {
+    document.getElementById('countryCount').textContent = state.countryCodes.size;
+    const subdivisionCount = document.getElementById('subdivisionCount');
+    if (subdivisionCount) subdivisionCount.textContent = state.subdivisionCodes.size;
 }
 
 // ============================================
@@ -423,10 +644,11 @@ function buildTotalGdpData(gdpPerCapitaData, populationData) {
 
 function populateCountrySelector() {
     const selector = document.getElementById('countrySelect');
+    selector.innerHTML = '';
     state.countries.forEach(country => {
         const option = document.createElement('option');
         option.value = country.code;
-        option.textContent = country.name;
+        option.textContent = country.type === 'subdivision' ? `${country.name} (${country.scopeLabel})` : country.name;
         selector.appendChild(option);
     });
 }
@@ -455,7 +677,7 @@ function setupCountrySearch() {
         ).slice(0, 10); // Limit to 10 results
 
         if (matches.length === 0) {
-            dropdown.innerHTML = '<div class="search-no-results">No countries found</div>';
+            dropdown.innerHTML = `<div class="search-no-results">No ${ENTITY_SCOPE_LABELS[state.entityScope].toLowerCase()} found</div>`;
             dropdown.classList.add('visible');
             return;
         }
@@ -467,10 +689,12 @@ function setupCountrySearch() {
             item.dataset.index = idx;
 
             const isSelected = state.selectedCountries.includes(country.code);
+            const typeLabel = country.type === 'subdivision' ? country.scopeLabel : country.code;
             item.innerHTML = `
                 <span class="search-result-name">${highlightMatch(country.name, query)}</span>
                 <span class="search-result-code">${country.code}</span>
-                ${isSelected ? '<span class="search-result-added">✓</span>' : ''}
+                <span class="search-result-type">${escapeHTML(typeLabel)}</span>
+                ${isSelected ? '<span class="search-result-added">Added</span>' : ''}
             `;
 
             item.addEventListener('click', () => {
@@ -526,8 +750,10 @@ function updateSelectedItem(items, selectedIndex) {
 }
 
 function highlightMatch(text, query) {
-    const regex = new RegExp(`(${query})`, 'gi');
-    return text.replace(regex, '<mark>$1</mark>');
+    const safeText = escapeHTML(text);
+    const safeQuery = escapeRegExp(escapeHTML(query));
+    const regex = new RegExp(`(${safeQuery})`, 'gi');
+    return safeText.replace(regex, '<mark>$1</mark>');
 }
 
 function addCountryFromSearch(code) {
@@ -539,18 +765,94 @@ function addCountryFromSearch(code) {
     }
 }
 
+function setControlVisibility(element, isVisible) {
+    if (!element) return;
+    element.classList.toggle('control-hidden', !isVisible);
+    element.querySelectorAll('button, input, select').forEach(control => {
+        control.disabled = !isVisible;
+    });
+}
+
+function setControlEnabled(element, isEnabled) {
+    if (!element) return;
+    element.classList.toggle('control-muted', !isEnabled);
+    element.querySelectorAll('button, input, select').forEach(control => {
+        control.disabled = !isEnabled;
+    });
+}
+
+function setEntityScope(scope) {
+    state.entityScope = scope;
+    document.querySelectorAll('[data-scope]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.scope === scope);
+    });
+
+    refreshSelectableEntities();
+    populateCountrySelector();
+
+    if (scope !== 'all') {
+        const allowedCodes = new Set(getSelectableCodesForScope(scope));
+        const selectedInScope = state.selectedCountries.filter(code => allowedCodes.has(code));
+        state.selectedCountries = selectedInScope.length ?
+            selectedInScope :
+            getDefaultCodesForScope(scope).filter(code => allowedCodes.has(code));
+        updateCountryChips();
+    }
+
+    const searchInput = document.getElementById('countrySearch');
+    if (searchInput) {
+        searchInput.placeholder = scope === 'states' ?
+            'Type to search U.S. states...' :
+            scope === 'all' ?
+                'Type to search countries or states...' :
+                'Type to search countries...';
+        searchInput.value = '';
+    }
+
+    const dropdown = document.getElementById('countrySearchDropdown');
+    if (dropdown) dropdown.classList.remove('visible');
+
+    updateDataTable();
+}
+
+function ensureCountrySelectionForMap() {
+    if (state.entityScope === 'states') {
+        state.entityScope = 'countries';
+        document.querySelectorAll('[data-scope]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.scope === 'countries');
+        });
+        refreshSelectableEntities();
+        populateCountrySelector();
+
+        const searchInput = document.getElementById('countrySearch');
+        if (searchInput) {
+            searchInput.placeholder = 'Type to search countries...';
+            searchInput.value = '';
+        }
+    }
+
+    const selectedCountriesOnly = state.selectedCountries.filter(code => isCountryCode(code));
+    if (selectedCountriesOnly.length !== state.selectedCountries.length) {
+        state.selectedCountries = selectedCountriesOnly.length ?
+            selectedCountriesOnly :
+            getDefaultCodesForScope('countries').filter(code => isCountryCode(code));
+        updateCountryChips();
+    }
+}
+
 function updateCountryChips() {
     const container = document.getElementById('selectedCountries');
     container.innerHTML = '';
 
     state.selectedCountries.forEach(code => {
-        const country = state.countries.find(c => c.code === code);
+        const country = getEntityMeta(code);
         if (!country) return;
 
         const chip = document.createElement('div');
         chip.className = 'country-chip';
         chip.innerHTML = `
-            <span>${country.name}</span>
+            <span>${escapeHTML(country.name)}</span>
+            <small>${escapeHTML(country.scopeLabel)}</small>
             <button data-code="${code}">✕</button>
         `;
 
@@ -564,7 +866,6 @@ function updateCountryChips() {
 
 function setupEventListeners() {
     // View Mode Buttons
-    // View Mode Buttons
     const viewBtns = document.querySelectorAll('.view-btn[data-view]');
     viewBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -572,30 +873,30 @@ function setupEventListeners() {
             btn.classList.add('active');
             state.currentView = btn.dataset.view;
 
+            if (state.currentView === 'map') {
+                ensureCountrySelectionForMap();
+            }
+
             // Toggle containers
             if (state.currentView === 'map') {
                 document.getElementById('chartContainer').style.display = 'none';
                 document.getElementById('mapContainer').style.display = 'block';
-                document.getElementById('mapYearControl').style.display = 'block';
                 document.getElementById('dataTableContainer').style.display = 'none';
                 document.getElementById('globalRankingsContainer').style.display = 'block';
             } else {
                 document.getElementById('chartContainer').style.display = 'block';
                 document.getElementById('mapContainer').style.display = 'none';
-                document.getElementById('mapYearControl').style.display = 'none';
                 document.getElementById('dataTableContainer').style.display = 'block';
                 document.getElementById('globalRankingsContainer').style.display = 'none';
             }
 
-            const gdpModeControl = document.getElementById('gdpModeControl');
-            if (gdpModeControl) {
-                gdpModeControl.style.display = state.currentView === 'gdp' ? 'block' : 'none';
-            }
+            setControlVisibility(document.getElementById('mapYearControl'), state.currentView === 'map');
+            setControlEnabled(document.getElementById('gdpModeControl'), state.currentView === 'gdp');
 
             // Handle Price Type Restrictions
             const priceBtns = document.querySelectorAll('[data-price]');
-            if (state.currentView === 'ratio' || state.currentView === 'life_expectancy') {
-                // PLI and Life Expectancy don't use price types
+            if (['ratio', 'life_expectancy', 'population'].includes(state.currentView)) {
+                // These indicators don't use price types.
                 if (state.currentView === 'ratio') setPriceType('current');
                 priceBtns.forEach(b => b.classList.add('disabled'));
                 priceBtns.forEach(b => b.disabled = true);
@@ -606,6 +907,14 @@ function setupEventListeners() {
 
             updateVisualization();
             // Update insights to reflect current view's data source
+            updateInsights();
+        });
+    });
+
+    document.querySelectorAll('[data-scope]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setEntityScope(btn.dataset.scope);
+            updateVisualization();
             updateInsights();
         });
     });
@@ -680,7 +989,7 @@ function setupEventListeners() {
     document.getElementById('playBtn').addEventListener('click', togglePlay);
 
     // Header Stats
-    document.getElementById('countryCount').textContent = state.countries.length;
+    updateHeaderStats();
 
     // Download/Action Buttons
     document.getElementById('downloadChart').addEventListener('click', downloadChart);
@@ -741,10 +1050,10 @@ function togglePlay() {
     const btn = document.getElementById('playBtn');
     if (state.isPlaying) {
         clearInterval(state.playInterval);
-        btn.textContent = '▶️ Play';
+        btn.innerHTML = '<svg class="btn-icon"><use href="#icon-play"></use></svg><span>Play</span>';
         state.isPlaying = false;
     } else {
-        btn.textContent = '⏸️ Pause';
+        btn.innerHTML = '<svg class="btn-icon"><use href="#icon-pause"></use></svg><span>Pause</span>';
         state.isPlaying = true;
         state.playInterval = setInterval(() => {
             state.mapYear++;
@@ -772,33 +1081,126 @@ function updateVisualization() {
     updateDataTable();
 }
 
+function getSeriesForView(view = state.currentView) {
+    switch (view) {
+        case 'ppp':
+            return state.pppData;
+        case 'life_expectancy':
+            return state.lifeExpectancyData;
+        case 'population':
+            return state.populationData;
+        case 'ratio':
+        case 'compare':
+        case 'growth':
+        case 'gdp':
+        default:
+            return state.gdpData;
+    }
+}
+
+function getMetricLabel(metric = state.currentView) {
+    switch (metric) {
+        case 'gdp':
+            return state.gdpMode === 'total' ?
+                (state.priceType === 'current' ? 'GDP (Current US$)' : 'GDP (Constant 2015 US$)') :
+                (state.priceType === 'current' ? 'GDP per Capita (Current US$)' : 'GDP per Capita (Constant 2015 US$)');
+        case 'ppp':
+            return state.priceType === 'current' ?
+                'GDP per Capita, PPP (Current International $)' :
+                'GDP per Capita, PPP (Constant 2021 International $)';
+        case 'ratio':
+            return 'Price Level Index (GDP / PPP)';
+        case 'life_expectancy':
+            return 'Life Expectancy at Birth';
+        case 'population':
+            return 'Population';
+        case 'growth':
+            return 'GDP per Capita Annual Growth';
+        default:
+            return VIEW_LABELS[metric] || 'Indicator';
+    }
+}
+
+function getYAxisLabel(metric = state.currentView) {
+    switch (metric) {
+        case 'ppp':
+            return 'International $';
+        case 'ratio':
+            return 'Index';
+        case 'life_expectancy':
+            return 'Years';
+        case 'population':
+            return 'People';
+        case 'growth':
+            return '% change';
+        default:
+            return 'USD';
+    }
+}
+
+function formatMetricValue(value, metric = state.currentView, options = {}) {
+    if (value === null || value === undefined || isNaN(value)) return 'N/A';
+    const compact = options.compact || false;
+
+    if (metric === 'ratio') return value.toFixed(3);
+    if (metric === 'life_expectancy') return `${value.toFixed(1)} yrs`;
+    if (metric === 'population') {
+        return new Intl.NumberFormat('en-US', {
+            notation: compact ? 'compact' : 'standard',
+            maximumFractionDigits: compact ? 1 : 0
+        }).format(value);
+    }
+    if (metric === 'growth') return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        notation: compact ? 'compact' : 'standard',
+        maximumFractionDigits: compact ? 1 : 0
+    }).format(value);
+}
+
+function getMetricValue(code, year, metric = state.currentView) {
+    if (metric === 'ppp') return state.pppData[code]?.values?.[year] ?? null;
+    if (metric === 'life_expectancy') return state.lifeExpectancyData[code]?.values?.[year] ?? null;
+    if (metric === 'population') return state.populationData[code]?.values?.[year] ?? null;
+    if (metric === 'ratio') {
+        const gVal = state.rawData.gdpCurrent[code]?.values?.[year];
+        const pVal = state.rawData.pppCurrent[code]?.values?.[year];
+        return (gVal && pVal) ? gVal / pVal : null;
+    }
+    if (metric === 'growth') {
+        const current = state.gdpData[code]?.values?.[year];
+        const previous = state.gdpData[code]?.values?.[year - 1];
+        return (current && previous) ? ((current - previous) / previous * 100) : null;
+    }
+    return state.gdpData[code]?.values?.[year] ?? null;
+}
+
+function getMetricPeriodChange(code, startYear, endYear, metric = state.currentView) {
+    if (metric === 'growth') return getMetricValue(code, endYear, metric);
+    const startValue = getMetricValue(code, startYear, metric);
+    const endValue = getMetricValue(code, endYear, metric);
+    return (startValue && endValue) ? ((endValue - startValue) / startValue * 100) : null;
+}
+
 function renderChart() {
     const ctx = document.getElementById('mainChart').getContext('2d');
     const years = [];
     for (let i = state.yearStart; i <= state.yearEnd; i++) years.push(i);
 
     let datasets = [];
-    let title = '';
-    let yAxisLabel = '';
+    let title = getMetricLabel();
+    let yAxisLabel = getYAxisLabel();
 
     switch (state.currentView) {
         case 'gdp':
-            title = state.gdpMode === 'total' ?
-                (state.priceType === 'current' ? 'GDP (Current US$)' : 'GDP (Constant 2015 US$)') :
-                (state.priceType === 'current' ? 'GDP per Capita (Current US$)' : 'GDP per Capita (Constant 2015 US$)');
-            yAxisLabel = 'USD';
             datasets = createDatasets(state.gdpData, years);
             break;
         case 'ppp':
-            title = state.priceType === 'current' ?
-                'GDP per Capita, PPP (Current International $)' :
-                'GDP per Capita, PPP (Constant 2021 International $)';
-            yAxisLabel = 'International $';
             datasets = createDatasets(state.pppData, years);
             break;
         case 'ratio':
-            title = 'Price Level Index (PLI)';
-            yAxisLabel = 'Price Level Index';
             datasets = createRatioDatasets(years);
             break;
         case 'compare':
@@ -807,9 +1209,13 @@ function renderChart() {
             datasets = createComparisonDatasets(years);
             break;
         case 'life_expectancy':
-            title = 'Life Expectancy at Birth (Years)';
-            yAxisLabel = 'Years';
             datasets = createDatasets(state.lifeExpectancyData, years);
+            break;
+        case 'population':
+            datasets = createDatasets(state.populationData, years);
+            break;
+        case 'growth':
+            datasets = createGrowthDatasets(years);
             break;
     }
 
@@ -850,11 +1256,7 @@ function renderChart() {
                             let label = context.dataset.label || '';
                             if (label) label += ': ';
                             if (context.parsed.y !== null) {
-                                label += state.currentView === 'ratio' ?
-                                    context.parsed.y.toFixed(3) :
-                                    state.currentView === 'life_expectancy' ?
-                                        context.parsed.y.toFixed(1) + ' years' :
-                                        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(context.parsed.y);
+                                label += formatMetricValue(context.parsed.y, state.currentView);
                             }
                             return label;
                         }
@@ -876,7 +1278,7 @@ function renderChart() {
                     border: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#e5e7eb' }
                 },
                 y: {
-                    min: 0, // GDP cannot be negative
+                    min: state.currentView === 'growth' ? undefined : 0,
                     grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim() || '#f3f4f6' },
                     ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim() || '#6b7280', font: { size: 11 } },
                     border: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#e5e7eb' },
@@ -957,6 +1359,31 @@ function createRatioDatasets(years) {
     }).filter(d => d !== null);
 }
 
+function createGrowthDatasets(years) {
+    return state.selectedCountries.map((code, i) => {
+        const country = state.gdpData[code];
+        if (!country) return null;
+
+        const data = years.map(year => getMetricValue(code, year, 'growth'));
+        const latestGrowth = data[data.length - 1];
+        const growthLabel = latestGrowth !== null && latestGrowth !== undefined ?
+            ` (${latestGrowth >= 0 ? '+' : ''}${latestGrowth.toFixed(1)}%)` :
+            '';
+
+        return {
+            label: country.name + growthLabel,
+            data,
+            borderColor: COLORS[i % COLORS.length],
+            backgroundColor: COLORS[i % COLORS.length] + '20',
+            borderWidth: 3,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            tension: 0.28,
+            fill: false
+        };
+    }).filter(d => d !== null);
+}
+
 function createComparisonDatasets(years) {
     const datasets = [];
     const startYear = years[0];
@@ -1023,7 +1450,7 @@ function normalizeCountryName(name) {
 
 function resolveFeatureCountryCode(feature, countryCodeByName) {
     const rawCode = (feature?.properties?.['ISO3166-1-Alpha-3'] || '').trim();
-    if (rawCode && rawCode !== '-99') return rawCode;
+    if (rawCode && rawCode !== '-99' && state.countryCodes.has(rawCode)) return rawCode;
 
     const countryName = feature?.properties?.name || feature?.properties?.ADMIN || '';
     return countryCodeByName.get(normalizeCountryName(countryName)) || null;
@@ -1033,124 +1460,88 @@ function renderMap() {
     const svg = document.getElementById('worldMap');
     const tooltip = document.getElementById('mapTooltip');
     const year = state.mapYear;
+    const metric = state.mapMetric || 'gdp';
+    document.getElementById('mapTitle').textContent = `${getMetricLabel(metric)} Map (${year})`;
 
     // Clear and prepare
     svg.innerHTML = '';
 
-    // Use 1000x600 for better aspect ratio (matches viewBox)
     const width = 1000;
-    const height = 600;
+    const height = 560;
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+    const features = state.geoData.features.filter(isRenderableMapFeature);
+    const project = createEqualEarthProjector(features, width, height);
+    renderMapBackdrop(svg, width, height, project);
+
     const countryCodeByName = new Map(
-        Object.entries(state.gdpData)
+        [...state.countryCodes]
+            .map(code => [code, state.gdpData[code]])
             .filter(([, country]) => country?.name)
             .map(([code, country]) => [normalizeCountryName(country.name), code])
     );
 
-    // Calculate rankings and stats for all countries
-    const countryStats = [];
-    Object.keys(state.gdpData).forEach(code => {
-        const gdpCountry = state.gdpData[code];
-        const pppCountry = state.pppData[code];
-        const gdpVal = gdpCountry?.values[year];
-        const pppVal = pppCountry?.values[year];
+    const countryStats = buildMapCountryStats(year, metric);
+    const statsByCode = new Map(countryStats.map(stat => [stat.code, stat]));
 
-        // Calculate growth (5 year)
-        const prevYear = year - 5;
-        const gdpPrev = gdpCountry?.values[prevYear];
-        const growth = (gdpVal && gdpPrev) ? ((gdpVal - gdpPrev) / gdpPrev * 100) : null;
-
-        if (gdpVal !== null && gdpVal !== undefined) {
-            countryStats.push({
-                code,
-                name: gdpCountry.name,
-                gdp: gdpVal,
-                ppp: pppVal,
-                growth,
-                ratio: (gdpVal && pppVal) ? (gdpVal / pppVal) : null
-            });
-        }
-    });
-
-    // Sort by GDP for rankings
-    countryStats.sort((a, b) => b.gdp - a.gdp);
+    countryStats.sort((a, b) => b.value - a.value);
     const rankMap = {};
     countryStats.forEach((c, i) => rankMap[c.code] = i + 1);
 
-    // Find min/max for scale
-    let min = Infinity, max = -Infinity;
-    countryStats.forEach(c => {
-        if (c.gdp < min) min = c.gdp;
-        if (c.gdp > max) max = c.gdp;
-    });
-
-    // Use logarithmic scale for sequential blue palette
-    const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#f3f4f6';
-    const colorScale = (val) => {
-        if (val === null || val === undefined) return noDataColor;
-        const normalized = Math.log(val) / Math.log(max);
-        // Sequential blue scale
-        const colors = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];
-        const idx = Math.min(Math.floor(normalized * colors.length), colors.length - 1);
-        return colors[idx];
-    };
-
-    document.getElementById('minValue').textContent = `$${Math.round(min).toLocaleString()}`;
-    document.getElementById('maxValue').textContent = `$${Math.round(max).toLocaleString()}+`;
+    const values = countryStats.map(c => c.value).filter(value => value !== null && value !== undefined && !isNaN(value));
+    const colorScale = createMapColorScale(values, metric);
+    updateMapLegend(values, metric);
 
     // Process GeoJSON features
-    state.geoData.features.forEach(feature => {
+    features.forEach(feature => {
         const countryName = feature.properties.name || feature.properties.ADMIN || 'Unknown';
-        const isoCode = (feature.properties['ISO3166-1-Alpha-3'] || '').trim();
-
-        // Antarctica dominates cylindrical maps visually and has no World Bank GDP coverage.
-        if (isoCode === 'ATA' || normalizeCountryName(countryName) === 'antarctica') {
-            return;
-        }
 
         // GeoJSON uses -99 for some sovereigns (e.g., France/Norway), so fallback by name.
         const code = resolveFeatureCountryCode(feature, countryCodeByName);
-        const gdpCountry = state.gdpData[code];
-        const pppCountry = state.pppData[code];
-        const gdpVal = gdpCountry ? gdpCountry.values[year] : null;
-        const pppVal = pppCountry ? pppCountry.values[year] : null;
+        const stat = statsByCode.get(code);
+        const gdpVal = stat?.gdp ?? null;
+        const pppVal = stat?.ppp ?? null;
+        const population = stat?.population ?? null;
+        const metricValue = stat?.value ?? null;
         const rank = rankMap[code];
-
-        // Calculate growth
-        const prevYear = year - 5;
-        const gdpPrev = gdpCountry?.values[prevYear];
-        const growth = (gdpVal && gdpPrev) ? ((gdpVal - gdpPrev) / gdpPrev * 100) : null;
-        const ratio = (gdpVal && pppVal) ? (gdpVal / pppVal) : null;
+        const growth = stat?.growth ?? null;
+        const ratio = stat?.ratio ?? null;
+        const lifeExpectancy = stat?.lifeExpectancy ?? null;
 
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', generatePathData(feature.geometry, width, height));
-        path.setAttribute('fill', colorScale(gdpVal));
+        path.setAttribute('d', generatePathData(feature.geometry, project));
+        path.setAttribute('fill', colorScale(metricValue));
         path.setAttribute('data-code', code || '');
+        path.setAttribute('fill-rule', 'evenodd');
+        path.classList.add('map-country');
+        path.style.cursor = code ? 'pointer' : 'default';
 
-        // Highlight selected countries
-        const isSelected = code ? state.selectedCountries.includes(code) : false;
-        if (isSelected) {
-            path.style.stroke = '#f59e0b';
-            path.style.strokeWidth = '2';
-        }
+        applyMapPathStyle(path, code);
 
         path.addEventListener('mouseenter', (e) => {
-            path.style.stroke = isSelected ? '#f59e0b' : '#fff';
-            path.style.strokeWidth = isSelected ? '3' : '2';
+            applyMapPathStyle(path, code, true);
             tooltip.classList.add('visible');
 
-            // Enhanced tooltip with more info
+            const isSelected = code ? state.selectedCountries.includes(code) : false;
+            const displayName = code ? getEntityMeta(code).name : countryName;
             tooltip.innerHTML = `
                 <div class="tooltip-header">
-                    <strong>${countryName}</strong>
+                    <strong>${escapeHTML(displayName)}</strong>
                     ${rank ? `<span class="tooltip-rank">#${rank}</span>` : ''}
                 </div>
                 <div class="tooltip-grid">
-                    <span class="tooltip-label">GDP (${year}):</span>
-                    <span class="tooltip-value">${gdpVal ? '$' + Math.round(gdpVal).toLocaleString() : 'N/A'}</span>
-                    <span class="tooltip-label">PPP:</span>
-                    <span class="tooltip-value">${pppVal ? '$' + Math.round(pppVal).toLocaleString() : 'N/A'}</span>
+                    <span class="tooltip-label">${escapeHTML(getMetricLabel(metric))}:</span>
+                    <span class="tooltip-value">${formatMetricValue(metricValue, metric)}</span>
+                    <span class="tooltip-label">GDP pc:</span>
+                    <span class="tooltip-value">${formatMetricValue(gdpVal, 'gdp')}</span>
+                    <span class="tooltip-label">PPP pc:</span>
+                    <span class="tooltip-value">${formatMetricValue(pppVal, 'ppp')}</span>
                     <span class="tooltip-label">PLI:</span>
                     <span class="tooltip-value">${ratio ? ratio.toFixed(3) : 'N/A'}</span>
+                    <span class="tooltip-label">Life:</span>
+                    <span class="tooltip-value">${formatMetricValue(lifeExpectancy, 'life_expectancy')}</span>
+                    <span class="tooltip-label">Population:</span>
+                    <span class="tooltip-value">${formatMetricValue(population, 'population', { compact: true })}</span>
                     <span class="tooltip-label">5yr Growth:</span>
                     <span class="tooltip-value ${growth !== null ? (growth >= 0 ? 'positive' : 'negative') : ''}">${growth !== null ? (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%' : 'N/A'}</span>
                 </div>
@@ -1167,8 +1558,7 @@ function renderMap() {
         });
 
         path.addEventListener('mouseleave', () => {
-            path.style.stroke = isSelected ? '#f59e0b' : '#e5e7eb';
-            path.style.strokeWidth = isSelected ? '2' : '0.5';
+            applyMapPathStyle(path, code);
             tooltip.classList.remove('visible');
         });
 
@@ -1178,23 +1568,14 @@ function renderMap() {
             if (!code) return;
 
             if (state.selectedCountries.includes(code)) {
-                // Remove country
                 removeCountry(code);
-                // Update just this path's style instead of re-rendering
-                path.style.stroke = '#e5e7eb';
-                path.style.strokeWidth = '0.5';
             } else {
-                // Add country
                 state.selectedCountries.push(code);
                 updateCountryChips();
                 updateInsights();
                 updateDataTable();
-                // Update just this path's style instead of re-rendering
-                path.style.stroke = '#f59e0b';
-                path.style.strokeWidth = '2';
+                renderMap();
             }
-            // Update the global rankings table to reflect selection state
-            renderGlobalRankings();
         });
 
         // Prevent context menu on right-click
@@ -1209,45 +1590,265 @@ function renderMap() {
     updateGlobalRankings(countryStats);
 }
 
-// Miller cylindrical projection (less polar distortion than Mercator)
-function generatePathData(geometry, width, height) {
+function buildMapCountryStats(year, metric) {
+    return [...state.countryCodes].map(code => {
+        const meta = getEntityMeta(code);
+        const gdp = state.gdpData[code]?.values?.[year] ?? null;
+        const ppp = state.pppData[code]?.values?.[year] ?? null;
+        const population = state.populationData[code]?.values?.[year] ?? null;
+        const lifeExpectancy = state.lifeExpectancyData[code]?.values?.[year] ?? null;
+        const ratio = getMetricValue(code, year, 'ratio');
+        const growth = getFiveYearGrowth(code, year);
+        const value = getMapMetricValue(code, year, metric, { gdp, ppp, population, lifeExpectancy, ratio, growth });
+
+        if (value === null || value === undefined || isNaN(value)) return null;
+
+        return {
+            code,
+            name: meta.name,
+            value,
+            gdp,
+            ppp,
+            population,
+            lifeExpectancy,
+            ratio,
+            growth
+        };
+    }).filter(Boolean);
+}
+
+function getFiveYearGrowth(code, year) {
+    const current = state.gdpData[code]?.values?.[year];
+    const previous = state.gdpData[code]?.values?.[year - 5];
+    return (current && previous) ? ((current - previous) / previous * 100) : null;
+}
+
+function getMapMetricValue(code, year, metric, cached = {}) {
+    switch (metric) {
+        case 'ppp':
+            return cached.ppp ?? getMetricValue(code, year, 'ppp');
+        case 'ratio':
+            return cached.ratio ?? getMetricValue(code, year, 'ratio');
+        case 'life_expectancy':
+            return cached.lifeExpectancy ?? getMetricValue(code, year, 'life_expectancy');
+        case 'population':
+            return cached.population ?? getMetricValue(code, year, 'population');
+        case 'growth':
+            return cached.growth ?? getFiveYearGrowth(code, year);
+        case 'gdp':
+        default:
+            return cached.gdp ?? getMetricValue(code, year, 'gdp');
+    }
+}
+
+function createMapColorScale(values, metric) {
+    const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#e3e7df';
+    if (!values.length) return () => noDataColor;
+
+    const ramp = metric === 'growth' ? MAP_COLOR_RAMPS.diverging :
+        metric === 'life_expectancy' ? MAP_COLOR_RAMPS.health :
+            metric === 'population' ? MAP_COLOR_RAMPS.population :
+                MAP_COLOR_RAMPS.sequential;
+
+    if (metric === 'growth') {
+        const maxAbs = Math.max(...values.map(value => Math.abs(value))) || 1;
+        return value => {
+            if (value === null || value === undefined || isNaN(value)) return noDataColor;
+            const normalized = Math.max(0, Math.min(1, (value + maxAbs) / (maxAbs * 2)));
+            return interpolateRamp(ramp, normalized);
+        };
+    }
+
+    const positiveValues = values.filter(value => value > 0);
+    const min = Math.min(...positiveValues);
+    const max = Math.max(...positiveValues);
+    const useLog = ['gdp', 'ppp', 'population'].includes(metric);
+
+    return value => {
+        if (value === null || value === undefined || isNaN(value)) return noDataColor;
+        let normalized;
+        if (useLog) {
+            if (value <= 0 || min <= 0 || max <= min) normalized = 0;
+            else normalized = (Math.log(value) - Math.log(min)) / (Math.log(max) - Math.log(min));
+        } else {
+            normalized = max === min ? 0.5 : (value - min) / (max - min);
+        }
+        return interpolateRamp(ramp, Math.max(0, Math.min(1, normalized)));
+    };
+}
+
+function updateMapLegend(values, metric) {
+    const minEl = document.getElementById('minValue');
+    const maxEl = document.getElementById('maxValue');
+    const gradient = document.querySelector('.gradient-bar');
+    if (!minEl || !maxEl || !gradient) return;
+
+    const ramp = metric === 'growth' ? MAP_COLOR_RAMPS.diverging :
+        metric === 'life_expectancy' ? MAP_COLOR_RAMPS.health :
+            metric === 'population' ? MAP_COLOR_RAMPS.population :
+                MAP_COLOR_RAMPS.sequential;
+    gradient.style.background = `linear-gradient(to right, ${ramp.join(', ')})`;
+
+    if (!values.length) {
+        minEl.textContent = 'No data';
+        maxEl.textContent = '';
+        return;
+    }
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    minEl.textContent = formatMetricValue(min, metric, { compact: true });
+    maxEl.textContent = formatMetricValue(max, metric, { compact: true });
+}
+
+function interpolateRamp(colors, t) {
+    const scaled = t * (colors.length - 1);
+    const index = Math.floor(scaled);
+    const nextIndex = Math.min(index + 1, colors.length - 1);
+    const localT = scaled - index;
+    return interpolateColor(colors[index], colors[nextIndex], localT);
+}
+
+function interpolateColor(start, end, t) {
+    const a = hexToRgb(start);
+    const b = hexToRgb(end);
+    const mix = a.map((channel, index) => Math.round(channel + (b[index] - channel) * t));
+    return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+}
+
+function hexToRgb(hex) {
+    const clean = hex.replace('#', '');
+    const value = parseInt(clean.length === 3 ? clean.split('').map(char => char + char).join('') : clean, 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+function applyMapPathStyle(path, code, isHovered = false) {
+    const selected = code ? state.selectedCountries.includes(code) : false;
+    const styles = getComputedStyle(document.documentElement);
+    const selectedColor = styles.getPropertyValue('--map-selected').trim() || '#c05621';
+    const defaultStroke = styles.getPropertyValue('--map-stroke').trim() || '#dde3da';
+
+    path.style.stroke = selected ? selectedColor : (isHovered ? '#ffffff' : defaultStroke);
+    path.style.strokeWidth = selected ? (isHovered ? '3' : '2') : (isHovered ? '1.5' : '0.55');
+}
+
+function isRenderableMapFeature(feature) {
+    const countryName = feature.properties.name || feature.properties.ADMIN || 'Unknown';
+    const isoCode = (feature.properties['ISO3166-1-Alpha-3'] || '').trim();
+    return isoCode !== 'ATA' && normalizeCountryName(countryName) !== 'antarctica';
+}
+
+function createEqualEarthProjector(features, width, height) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    features.forEach(feature => {
+        visitCoordinates(feature.geometry, coords => {
+            const [x, y] = equalEarthRaw(coords[0], coords[1]);
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        });
+    });
+
+    const padding = 28;
+    const scale = Math.min((width - padding * 2) / (maxX - minX), (height - padding * 2) / (maxY - minY));
+    const mapWidth = (maxX - minX) * scale;
+    const mapHeight = (maxY - minY) * scale;
+    const offsetX = (width - mapWidth) / 2;
+    const offsetY = (height - mapHeight) / 2;
+
+    return coords => {
+        const [x, y] = equalEarthRaw(coords[0], coords[1]);
+        return [
+            offsetX + (x - minX) * scale,
+            offsetY + (maxY - y) * scale
+        ];
+    };
+}
+
+function equalEarthRaw(lon, lat) {
+    const A1 = 1.340264;
+    const A2 = -0.081106;
+    const A3 = 0.000893;
+    const A4 = 0.003796;
+    const M = Math.sqrt(3) / 2;
+    const lambda = lon * Math.PI / 180;
+    const phi = Math.max(-89.999, Math.min(89.999, lat)) * Math.PI / 180;
+    const theta = Math.asin(M * Math.sin(phi));
+    const theta2 = theta * theta;
+    const theta6 = theta2 * theta2 * theta2;
+
+    return [
+        lambda * Math.cos(theta) / (M * (A1 + 3 * A2 * theta2 + theta6 * (7 * A3 + 9 * A4 * theta2))),
+        theta * (A1 + A2 * theta2 + theta6 * (A3 + A4 * theta2))
+    ];
+}
+
+function visitCoordinates(geometry, visitor) {
+    if (!geometry) return "";
+    if (geometry.type === 'Polygon') {
+        geometry.coordinates.forEach(ring => ring.forEach(visitor));
+    } else if (geometry.type === 'MultiPolygon') {
+        geometry.coordinates.forEach(polygon => {
+            polygon.forEach(ring => ring.forEach(visitor));
+        });
+    }
+}
+
+function renderMapBackdrop(svg, width, height, project) {
+    const boundary = [];
+    for (let lon = -180; lon <= 180; lon += 5) boundary.push([lon, 84]);
+    for (let lat = 84; lat >= -58; lat -= 5) boundary.push([180, lat]);
+    for (let lon = 180; lon >= -180; lon -= 5) boundary.push([lon, -58]);
+    for (let lat = -58; lat <= 84; lat += 5) boundary.push([-180, lat]);
+
+    const ocean = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    ocean.setAttribute('d', lineToPath(boundary, project, true));
+    ocean.classList.add('map-ocean-shape');
+    svg.appendChild(ocean);
+
+    for (let lon = -150; lon <= 180; lon += 30) {
+        const line = [];
+        for (let lat = -60; lat <= 80; lat += 4) line.push([lon, lat]);
+        appendGraticule(svg, lineToPath(line, project, false));
+    }
+
+    for (let lat = -60; lat <= 60; lat += 30) {
+        const line = [];
+        for (let lon = -180; lon <= 180; lon += 4) line.push([lon, lat]);
+        appendGraticule(svg, lineToPath(line, project, false));
+    }
+}
+
+function appendGraticule(svg, d) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.classList.add('map-graticule');
+    svg.appendChild(path);
+}
+
+function lineToPath(points, project, closePath = false) {
+    if (!points.length) return '';
+    const projected = points.map(coords => {
+        const [x, y] = project(coords);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    return `M${projected.join('L')}${closePath ? 'Z' : ''}`;
+}
+
+function generatePathData(geometry, project) {
     if (!geometry) return "";
 
-    const minLat = -60;
-    const maxLat = 85;
-    const toMillerY = (lat) => {
-        const latRad = lat * Math.PI / 180;
-        return 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * latRad));
-    };
-
-    const millerMin = toMillerY(minLat);
-    const millerMax = toMillerY(maxLat);
-
-    const project = (coords) => {
-        const lon = coords[0];
-        const lat = Math.max(minLat, Math.min(maxLat, coords[1]));
-
-        // X: linear mapping from -180..180 to 0..width
-        const x = (lon + 180) * (width / 360);
-
-        // Y: Miller projection with clipped latitude range
-        const millerY = toMillerY(lat);
-        const y = ((millerMax - millerY) / (millerMax - millerMin)) * height;
-
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-    };
-
-    const processRing = (ring) => {
-        if (!ring || ring.length === 0) return "";
-        return "M" + ring.map(project).join("L") + "Z";
-    };
+    const processRing = ring => lineToPath(ring, project, true);
 
     if (geometry.type === "Polygon") {
-        return processRing(geometry.coordinates[0]);
+        return geometry.coordinates.map(processRing).join(" ");
     } else if (geometry.type === "MultiPolygon") {
-        return geometry.coordinates.map(polygon =>
-            processRing(polygon[0])
-        ).join(" ");
+        return geometry.coordinates.map(polygon => polygon.map(processRing).join(" ")).join(" ");
     }
     return "";
 }
@@ -1260,82 +1861,60 @@ function updateDataTable() {
     const tbody = document.getElementById('dataTableBody');
     tbody.innerHTML = '';
 
-    // Update Headers
+    const latestYear = state.yearEnd;
+    const prevYear = state.yearStart;
+    const metric = state.currentView === 'compare' ? 'gdp' : state.currentView;
+
     const gdpHeader = document.getElementById('headerGdp');
     const pppHeader = document.getElementById('headerPpp');
-    if (gdpHeader && pppHeader) {
-        const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015'; // 2015/2021 simplification
+    const valueHeader = document.getElementById('headerValue');
+    if (gdpHeader && pppHeader && valueHeader) {
+        const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015';
         const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
-        const gdpLabel = (state.currentView === 'gdp' && state.gdpMode === 'total') ? 'GDP' : 'GDP per Capita';
+        valueHeader.innerHTML = `${getMetricLabel(metric)} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+        const gdpLabel = state.gdpMode === 'total' && state.currentView === 'gdp' ? 'GDP' : 'GDP per Capita';
         gdpHeader.innerHTML = `${gdpLabel} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
-        if (state.currentView !== 'life_expectancy') {
-            pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
-        } else {
-            pppHeader.innerHTML = `Life Expectancy <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
-        }
+        pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
 
-        // Update Growth Header
         const growthHeader = document.querySelector('th[data-sort="growth"]');
         if (growthHeader) {
-            growthHeader.innerHTML = `Growth <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearStart}-${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+            growthHeader.innerHTML = `Change <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearStart}-${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
         }
     }
 
-    // Determine primary data source based on view
-    const usePPP = state.currentView === 'ppp';
-    const latestYear = state.yearEnd;
-    const prevYear = state.yearStart;
-
     const isSelectionEmpty = state.selectedCountries.length === 0;
-    const codesToShow = isSelectionEmpty ? state.countries.map(c => c.code) : state.selectedCountries;
+    const codesToShow = isSelectionEmpty ? getSelectableCodesForScope() : state.selectedCountries;
 
-    // Update Header
     const headerTitle = document.getElementById('tableHeaderTitle');
     if (headerTitle) {
         headerTitle.textContent = isSelectionEmpty ?
-            `Global Data Overview (${latestYear})` :
-            `Selected Countries Comparison (${latestYear})`;
+            `${getScopeEmptyLabel()} (${latestYear})` :
+            `Selected Comparison (${latestYear})`;
     }
 
-    // Build data array for sorting
     const tableData = codesToShow.map(code => {
-        const gdp = state.gdpData[code];
-        const ppp = state.pppData[code];
-        if (!gdp && !ppp) return null;
+        const meta = getEntityMeta(code);
+        const gdp = state.gdpData[code]?.values?.[latestYear] ?? null;
+        const ppp = state.pppData[code]?.values?.[latestYear] ?? null;
+        const ratio = getMetricValue(code, latestYear, 'ratio');
+        const value = getMetricValue(code, latestYear, metric);
+        const growth = getMetricPeriodChange(code, prevYear, latestYear, metric);
 
-        const gVal = gdp ? gdp.values[latestYear] : null;
-        const pVal = ppp ? ppp.values[latestYear] : null;
-        const leVal = state.lifeExpectancyData[code] ? state.lifeExpectancyData[code].values[latestYear] : null;
+        if (value === null && gdp === null && ppp === null) return null;
 
-        // Calculate growth based on current view
-        let growth = null;
-        if (usePPP && ppp) {
-            const oldPVal = ppp.values[prevYear];
-            growth = (pVal && oldPVal) ? ((pVal - oldPVal) / oldPVal * 100) : null;
-        } else if (gdp) {
-            const oldGVal = gdp.values[prevYear];
-            growth = (gVal && oldGVal) ? ((gVal - oldGVal) / oldGVal * 100) : null;
-        }
-
-        // For PLI, always use CURRENT prices
-        const gdpCur = state.rawData.gdpCurrent[code];
-        const pppCur = state.rawData.pppCurrent[code];
-        const gValCur = gdpCur ? gdpCur.values[latestYear] : null;
-        const pValCur = pppCur ? pppCur.values[latestYear] : null;
-
-        const ratio = (gValCur && pValCur) ? (gValCur / pValCur) : null;
-        const name = (usePPP && ppp) ? ppp.name : (gdp ? gdp.name : (state.lifeExpectancyData[code] ? state.lifeExpectancyData[code].name : 'Unknown'));
-
-        // Handle growth calculation for Life Expectancy view
-        if (state.currentView === 'life_expectancy') {
-            const leStart = state.lifeExpectancyData[code] ? state.lifeExpectancyData[code].values[prevYear] : null;
-            growth = (leVal && leStart) ? ((leVal - leStart) / leStart * 100) : null;
-        }
-
-        return { code, name, gdp: gVal, ppp: pVal, lifeExp: leVal, ratio, growth };
+        return {
+            code,
+            name: meta.name,
+            scopeLabel: meta.scopeLabel,
+            value,
+            metric,
+            gdp,
+            ppp,
+            ratio,
+            growth
+        };
     }).filter(d => d !== null);
 
-    // Sort based on current sort field
     tableData.sort((a, b) => {
         let aVal, bVal;
         switch (dataSortField) {
@@ -1343,30 +1922,33 @@ function updateDataTable() {
                 aVal = a.name;
                 bVal = b.name;
                 return dataSortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            case 'value':
+                aVal = a.value ?? -Infinity;
+                bVal = b.value ?? -Infinity;
+                break;
             case 'gdp':
-                aVal = a.gdp || 0;
-                bVal = b.gdp || 0;
+                aVal = a.gdp ?? -Infinity;
+                bVal = b.gdp ?? -Infinity;
                 break;
             case 'ppp':
-                aVal = a.ppp || 0;
-                bVal = b.ppp || 0;
+                aVal = a.ppp ?? -Infinity;
+                bVal = b.ppp ?? -Infinity;
                 break;
             case 'ratio':
-                aVal = a.ratio || 0;
-                bVal = b.ratio || 0;
+                aVal = a.ratio ?? -Infinity;
+                bVal = b.ratio ?? -Infinity;
                 break;
             case 'growth':
-                aVal = a.growth || -Infinity;
-                bVal = b.growth || -Infinity;
+                aVal = a.growth ?? -Infinity;
+                bVal = b.growth ?? -Infinity;
                 break;
             default:
-                aVal = a.gdp || 0;
-                bVal = b.gdp || 0;
+                aVal = a.value ?? -Infinity;
+                bVal = b.value ?? -Infinity;
         }
         return dataSortAsc ? aVal - bVal : bVal - aVal;
     });
 
-    // Render sorted rows
     tableData.forEach(d => {
         const tr = document.createElement('tr');
         tr.dataset.code = d.code;
@@ -1379,12 +1961,15 @@ function updateDataTable() {
         }
 
         tr.innerHTML = `
-            <td>${d.name}</td>
-            <td>${d.gdp ? '$' + Math.round(d.gdp).toLocaleString() : 'N/A'}</td>
-            <td>${state.currentView === 'life_expectancy' ?
-                (d.lifeExp ? d.lifeExp.toFixed(1) + ' yrs' : 'N/A') :
-                (d.ppp ? '$' + Math.round(d.ppp).toLocaleString() : 'N/A')
-            }</td>
+            <td>
+                <span class="entity-cell">
+                    <span class="entity-name">${escapeHTML(d.name)}</span>
+                    <span class="entity-meta">${escapeHTML(d.scopeLabel)}</span>
+                </span>
+            </td>
+            <td>${formatMetricValue(d.value, d.metric, { compact: true })}</td>
+            <td>${formatMetricValue(d.gdp, 'gdp', { compact: true })}</td>
+            <td>${formatMetricValue(d.ppp, 'ppp', { compact: true })}</td>
             <td>${d.ratio ? d.ratio.toFixed(3) : 'N/A'}</td>
             <td class="${d.growth !== null ? (d.growth >= 0 ? 'positive' : 'negative') : ''}">
                 ${d.growth !== null ? (d.growth >= 0 ? '+' : '') + d.growth.toFixed(1) + '%' : 'N/A'}
@@ -1403,94 +1988,82 @@ function updateInsights() {
     const trendContainer = document.getElementById('growthTrends');
 
     if (state.selectedCountries.length < 1) {
-        content.innerHTML = '<p>Select countries to see insights and growth statistics.</p>';
+        content.innerHTML = '<p>Select countries or states to see comparative insights and growth statistics.</p>';
         topContainer.innerHTML = '';
         trendContainer.innerHTML = '';
         return;
     }
 
-    // Determine which data source to use based on current view
-    const usePPP = state.currentView === 'ppp';
-    const useLifeExp = state.currentView === 'life_expectancy';
-    const useTotalGdp = state.currentView === 'gdp' && state.gdpMode === 'total';
-    const dataSource = useLifeExp ? state.lifeExpectancyData : (usePPP ? state.pppData : state.gdpData);
-    const dataLabel = useLifeExp ? 'Life Expectancy' : (usePPP ? 'PPP' : 'GDP');
-    const currencyLabel = useLifeExp ? 'years' : (usePPP ? 'Int\'l $' : 'USD');
-    const perCapitaSuffix = useLifeExp ? '' : (usePPP ? ' per capita' : (useTotalGdp ? '' : ' per capita'));
-
-    // Use the user's selected year range
+    const metric = state.currentView === 'compare' ? 'gdp' :
+        state.currentView === 'map' ? state.mapMetric :
+            state.currentView;
+    const dataLabel = getMetricLabel(metric);
     const startYear = state.yearStart;
     const endYear = state.yearEnd;
     const yearSpan = endYear - startYear;
 
-    // Calculate values for selected countries
     const countryStats = state.selectedCountries
-        .filter(code => dataSource[code])
         .map(code => {
-            const country = dataSource[code];
-            const endVal = country.values[endYear];
-            const startVal = country.values[startYear];
-
-            // Calculate growth over selected period
-            const growthPeriod = (endVal && startVal) ? ((endVal - startVal) / startVal * 100) : null;
-
-            // Calculate CAGR over selected period
+            const meta = getEntityMeta(code);
+            const endVal = getMetricValue(code, endYear, metric);
+            const startVal = getMetricValue(code, startYear, metric);
+            const growthPeriod = getMetricPeriodChange(code, startYear, endYear, metric);
             const cagr = (endVal && startVal && yearSpan > 0) ?
                 ((Math.pow(endVal / startVal, 1 / yearSpan) - 1) * 100) : null;
 
             return {
                 code,
-                name: country.name,
+                name: meta.name,
                 startVal,
                 endVal,
                 growthPeriod,
                 cagr
             };
         })
-        .filter(c => c.endVal)
+        .filter(c => c.endVal !== null && c.endVal !== undefined)
         .sort((a, b) => b.endVal - a.endVal);
 
     if (countryStats.length === 0) {
-        content.innerHTML = '<p>No data available for selected countries.</p>';
+        content.innerHTML = '<p>No data available for the selected entities and indicator.</p>';
         topContainer.innerHTML = '';
         trendContainer.innerHTML = '';
         return;
     }
 
-    // Key Insights content
     const leader = countryStats[0];
     let insightHTML = `
-        <p><span class="insight-highlight">${leader.name}</span> leads with ${dataLabel}${perCapitaSuffix} of 
-        <span class="insight-highlight">${useLifeExp ? leader.endVal.toFixed(1) : '$' + Math.round(leader.endVal).toLocaleString()}</span> (${currencyLabel}) in ${endYear}.</p>
+        <p><span class="insight-highlight">${escapeHTML(leader.name)}</span> leads on ${escapeHTML(dataLabel)} with
+        <span class="insight-highlight">${formatMetricValue(leader.endVal, metric)}</span> in ${endYear}.</p>
     `;
 
     if (countryStats.length >= 2) {
         const runnerUp = countryStats[1];
         const diff = ((leader.endVal - runnerUp.endVal) / runnerUp.endVal * 100).toFixed(1);
-        insightHTML += `<p>That's <span class="insight-highlight">${diff}%</span> higher than ${runnerUp.name}.</p>`;
+        insightHTML += `<p>That's <span class="insight-highlight">${diff}%</span> higher than ${escapeHTML(runnerUp.name)}.</p>`;
     }
 
-    // Add growth summary based on selected period
     if (leader.growthPeriod !== null && leader.startVal) {
-        const growthDir = leader.growthPeriod >= 0 ? 'grew' : 'declined';
-        insightHTML += `<p>${dataLabel}${perCapitaSuffix} ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growthPeriod).toFixed(1)}%</span> from ${startYear} to ${endYear}.</p>`;
-        if (leader.cagr !== null && yearSpan > 1) {
+        if (metric === 'growth') {
+            insightHTML += `<p>Latest annual growth: <span class="insight-highlight">${leader.growthPeriod >= 0 ? '+' : ''}${leader.growthPeriod.toFixed(1)}%</span> in ${endYear}.</p>`;
+        } else {
+            const growthDir = leader.growthPeriod >= 0 ? 'grew' : 'declined';
+            insightHTML += `<p>${escapeHTML(dataLabel)} ${growthDir} by <span class="insight-highlight">${Math.abs(leader.growthPeriod).toFixed(1)}%</span> from ${startYear} to ${endYear}.</p>`;
+        }
+        if (leader.cagr !== null && yearSpan > 1 && metric !== 'growth') {
             insightHTML += `<p>Avg. annual growth (CAGR): <span class="insight-highlight">${leader.cagr >= 0 ? '+' : ''}${leader.cagr.toFixed(2)}%</span></p>`;
         }
     }
 
     content.innerHTML = insightHTML;
 
-    // Top Performers (by end year value)
     topContainer.innerHTML = countryStats.slice(0, 3).map((item, i) => `
         <div class="performer-item">
             <span class="performer-rank">${i + 1}</span>
-            <span class="performer-name">${item.name}</span>
-            <span class="performer-value">${useLifeExp ? item.endVal.toFixed(1) + ' yrs' : '$' + Math.round(item.endVal / 1000) + 'k'}</span>
+            <span class="performer-name">${escapeHTML(item.name)}</span>
+            <span class="performer-value">${formatMetricValue(item.endVal, metric, { compact: true })}</span>
         </div>
     `).join('');
 
-    // Growth Trends (sorted by period growth)
     const growthSorted = [...countryStats]
         .filter(c => c.growthPeriod !== null)
         .sort((a, b) => b.growthPeriod - a.growthPeriod);
@@ -1500,7 +2073,7 @@ function updateInsights() {
             const isPositive = item.growthPeriod >= 0;
             return `
                 <div class="trend-item">
-                    <span class="trend-name">${item.name}</span>
+                    <span class="trend-name">${escapeHTML(item.name)}</span>
                     <span class="trend-value ${isPositive ? '' : 'negative'}">${isPositive ? '+' : ''}${item.growthPeriod.toFixed(1)}%</span>
                 </div>
             `;
@@ -1585,6 +2158,10 @@ function renderGlobalRankings() {
                 aVal = globalRankingsData.indexOf(a);
                 bVal = globalRankingsData.indexOf(b);
                 break;
+            case 'value':
+                aVal = a.value || 0;
+                bVal = b.value || 0;
+                break;
             case 'name':
                 aVal = a.name;
                 bVal = b.name;
@@ -1597,9 +2174,17 @@ function renderGlobalRankings() {
                 aVal = a.ppp || 0;
                 bVal = b.ppp || 0;
                 break;
+            case 'ratio':
+                aVal = a.ratio || 0;
+                bVal = b.ratio || 0;
+                break;
             case 'life_expectancy':
-                aVal = state.lifeExpectancyData[a.code]?.values[state.mapYear] || 0;
-                bVal = state.lifeExpectancyData[b.code]?.values[state.mapYear] || 0;
+                aVal = a.lifeExpectancy || 0;
+                bVal = b.lifeExpectancy || 0;
+                break;
+            case 'population':
+                aVal = a.population || 0;
+                bVal = b.population || 0;
                 break;
             case 'growth':
                 aVal = a.growth || -Infinity;
@@ -1619,11 +2204,9 @@ function renderGlobalRankings() {
             <tr class="${isSelected ? 'row-selected' : ''}" data-code="${c.code}">
                 <td class="rank-cell">${originalRank}</td>
                 <td>${c.name}</td>
-                <td>$${Math.round(c.gdp).toLocaleString()}</td>
-                <td>${state.currentView === 'life_expectancy' ?
-                (state.lifeExpectancyData[c.code]?.values[state.mapYear]?.toFixed(1) + ' yrs' || 'N/A') :
-                (c.ppp ? '$' + Math.round(c.ppp).toLocaleString() : 'N/A')
-            }</td>
+                <td>${formatMetricValue(c.value, state.mapMetric, { compact: true })}</td>
+                <td>${formatMetricValue(c.gdp, 'gdp', { compact: true })}</td>
+                <td>${formatMetricValue(c.ppp, 'ppp', { compact: true })}</td>
                 <td class="${c.growth !== null ? (c.growth >= 0 ? 'positive' : 'negative') : ''}">
                     ${c.growth !== null ? (c.growth >= 0 ? '+' : '') + c.growth.toFixed(1) + '%' : 'N/A'}
                 </td>
@@ -1665,9 +2248,15 @@ function setupGlobalRankingsListeners() {
     const metricSelect = document.getElementById('rankingMetric');
     if (metricSelect) {
         metricSelect.addEventListener('change', (e) => {
-            rankingsSortField = e.target.value;
-            rankingsSortAsc = false; // Default to descending for metrics
-            renderGlobalRankings();
+            state.mapMetric = e.target.value;
+            rankingsSortField = 'value';
+            rankingsSortAsc = false;
+            if (state.currentView === 'map') {
+                renderMap();
+                updateInsights();
+            } else {
+                renderGlobalRankings();
+            }
         });
     }
 
@@ -1700,7 +2289,7 @@ function setupGlobalRankingsListeners() {
 // Sortable Data Table (Selected Countries)
 // ============================================
 
-let dataSortField = 'gdp';
+let dataSortField = 'value';
 let dataSortAsc = false;
 
 function setupDataTableSorting() {

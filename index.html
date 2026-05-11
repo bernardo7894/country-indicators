@@ -5,40 +5,123 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Interactive GDP Visualization Tool - Compare GDP per capita and PPP across 260+ countries with interactive charts and world map visualization">
-    <title>Global GDP Explorer | Economic Data Visualization</title>
+        content="Interactive country indicators explorer - compare GDP, PPP, population, health, and growth indicators with charts and a world map.">
+    <title>Country Indicators Explorer | Economic Data Visualization</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 
 <body>
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="icon-logo" viewBox="0 0 24 24">
+            <path d="M4.5 16.5V7.4L12 3.2l7.5 4.2v9.1L12 20.8 4.5 16.5Z" fill="none"
+                stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+            <path d="M4.8 7.6 12 11.7l7.2-4.1M12 11.7v8.5" fill="none" stroke="currentColor"
+                stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M8.1 14.2 12 16.4l3.9-2.2" fill="none" stroke="currentColor" stroke-width="1.4"
+                stroke-linecap="round" />
+        </symbol>
+        <symbol id="icon-gdp" viewBox="0 0 24 24">
+            <path d="M4 19.5h16" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" />
+            <path d="M6.5 17V9.5h3V17m2.5 0V5.5h3V17m2.5 0v-5h3v5" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-ppp" viewBox="0 0 24 24">
+            <path d="M7 8.5h7.2a3.3 3.3 0 0 1 0 6.6H7V5.3h6.3" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M17 5.5 20 8l-3 2.5M20 8h-4M7 18.5l-3-2.5L7 13.5M4 16h4" fill="none"
+                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-compare" viewBox="0 0 24 24">
+            <path d="M6 18V6m12 12V6" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" />
+            <path d="M4 9.5h6M4 14.5h6M14 8h6M14 16h6" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" />
+        </symbol>
+        <symbol id="icon-pli" viewBox="0 0 24 24">
+            <path d="M4.5 17.5 9 13l3 2.8 7.5-8.3" fill="none" stroke="currentColor" stroke-width="1.9"
+                stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M16 7.5h3.5V11" fill="none" stroke="currentColor" stroke-width="1.9"
+                stroke-linecap="round" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-life" viewBox="0 0 24 24">
+            <path d="M4 12h3.5l1.8-5.2 4.1 10.4 2.1-5.2H20" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M12 20.2C8.1 17.4 5.2 14.6 5.2 10.9a3.5 3.5 0 0 1 6.1-2.4l.7.7.7-.7a3.5 3.5 0 0 1 6.1 2.4"
+                fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-population" viewBox="0 0 24 24">
+            <path d="M8.3 11.2a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                fill="none" stroke="currentColor" stroke-width="1.6" />
+            <path d="M3.8 19.2c.5-3.2 2.2-5 4.5-5s4 1.8 4.5 5M11.2 19.2c.5-3.2 2.2-5 4.5-5s4 1.8 4.5 5"
+                fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </symbol>
+        <symbol id="icon-growth" viewBox="0 0 24 24">
+            <path d="M4 18.5h16M6 15.5l4-4 3 2.7 5-7.2" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M17.5 7h2v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-map" viewBox="0 0 24 24">
+            <path d="M4.5 6.7 9.7 4.8l4.6 1.8 5.2-1.9v12.6l-5.2 1.9-4.6-1.8-5.2 1.9V6.7Z"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+            <path d="M9.7 4.8v12.6M14.3 6.6v12.6" fill="none" stroke="currentColor" stroke-width="1.4"
+                stroke-linecap="round" />
+        </symbol>
+        <symbol id="icon-play" viewBox="0 0 24 24">
+            <path d="M8 5.8v12.4L18 12 8 5.8Z" fill="currentColor" />
+        </symbol>
+        <symbol id="icon-pause" viewBox="0 0 24 24">
+            <path d="M7 5.5h3.5v13H7Zm6.5 0H17v13h-3.5Z" fill="currentColor" />
+        </symbol>
+        <symbol id="icon-insights" viewBox="0 0 24 24">
+            <path d="M12 4.2a6.2 6.2 0 0 0-3.3 11.4v2.1h6.6v-2.1A6.2 6.2 0 0 0 12 4.2Z"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+            <path d="M9.6 20h4.8M10.2 11.6l1.4 1.4 2.6-3.2" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-rankings" viewBox="0 0 24 24">
+            <path d="M5 18.5h14M7 16V9h3v7m2 0V5.5h3V16m2 0v-4.5h3V16" fill="none"
+                stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-top" viewBox="0 0 24 24">
+            <path d="M12 4.5 14 9l4.9.5-3.7 3.3 1.1 4.8L12 15.1l-4.3 2.5 1.1-4.8-3.7-3.3L10 9l2-4.5Z"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-trends" viewBox="0 0 24 24">
+            <path d="M4.5 17.5c2.4 0 2.4-9 4.8-9s2.4 9 4.8 9 2.4-9 5.4-9" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </symbol>
+    </svg>
     <div class="app-container">
         <!-- Header -->
         <header class="header">
             <div class="header-content">
                 <div class="logo">
                     <div class="logo-icon">
-                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round" />
-                            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round" />
-                        </svg>
+                        <svg><use href="#icon-logo"></use></svg>
                     </div>
-                    <h1>Global GDP Explorer</h1>
+                    <div>
+                        <h1>Country Indicators Explorer</h1>
+                        <p>GDP, PPP, population, health, and growth signals</p>
+                    </div>
                 </div>
                 <div class="header-actions">
                     <div class="header-stats">
                         <div class="stat-item">
                             <span class="stat-value" id="countryCount">0</span>
                             <span class="stat-label">Countries</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="subdivisionCount">0</span>
+                            <span class="stat-label">Subdivisions</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-value" id="yearRange">1960-2024</span>
@@ -64,37 +147,45 @@
         <main class="main-content">
             <!-- Control Panel -->
             <section class="control-panel">
-                <div class="control-group">
+                <div class="control-group view-control">
                     <label class="control-label">View Mode</label>
-                    <div class="view-mode-selector">
+                    <div class="view-mode-selector primary-tabs">
                         <button class="view-btn active" data-view="gdp" id="viewGdp">
-                            <span class="btn-icon">📊</span>
+                            <svg class="btn-icon"><use href="#icon-gdp"></use></svg>
                             GDP (USD)
                         </button>
                         <button class="view-btn" data-view="ppp" id="viewPpp">
-                            <span class="btn-icon">💱</span>
+                            <svg class="btn-icon"><use href="#icon-ppp"></use></svg>
                             PPP
                         </button>
                         <button class="view-btn" data-view="compare" id="viewCompare">
-                            <span class="btn-icon">⚖️</span>
+                            <svg class="btn-icon"><use href="#icon-compare"></use></svg>
                             Compare
                         </button>
                         <button class="view-btn" data-view="ratio" id="viewRatio">
-                            <span class="btn-icon">📈</span>
+                            <svg class="btn-icon"><use href="#icon-pli"></use></svg>
                             Price Level Index
                         </button>
                         <button class="view-btn" data-view="life_expectancy" id="viewLifeExpectancy">
-                            <span class="btn-icon">❤️</span>
+                            <svg class="btn-icon"><use href="#icon-life"></use></svg>
                             Life Expectancy
                         </button>
+                        <button class="view-btn" data-view="population" id="viewPopulation">
+                            <svg class="btn-icon"><use href="#icon-population"></use></svg>
+                            Population
+                        </button>
+                        <button class="view-btn" data-view="growth" id="viewGrowth">
+                            <svg class="btn-icon"><use href="#icon-growth"></use></svg>
+                            GDP Growth
+                        </button>
                         <button class="view-btn" data-view="map" id="viewMap">
-                            <span class="btn-icon">🗺️</span>
+                            <svg class="btn-icon"><use href="#icon-map"></use></svg>
                             Map
                         </button>
                     </div>
                 </div>
 
-                <div class="control-group">
+                <div class="control-group compact-control">
                     <label class="control-label">Price Type</label>
                     <div class="view-mode-selector">
                         <button class="view-btn" data-price="current" id="priceCurrent">
@@ -106,7 +197,7 @@
                     </div>
                 </div>
 
-                <div class="control-group" id="gdpModeControl">
+                <div class="control-group compact-control" id="gdpModeControl">
                     <label class="control-label">GDP Mode</label>
                     <div class="view-mode-selector">
                         <button class="view-btn active" data-gdp-mode="per_capita" id="gdpPerCapita">
@@ -118,8 +209,23 @@
                     </div>
                 </div>
 
-                <div class="control-group">
-                    <label class="control-label" for="countrySearch">Search & Add Countries</label>
+                <div class="control-group compact-control" id="scopeControl">
+                    <label class="control-label">Data Scope</label>
+                    <div class="view-mode-selector">
+                        <button class="view-btn active" data-scope="countries" id="scopeCountries">
+                            Countries
+                        </button>
+                        <button class="view-btn" data-scope="states" id="scopeStates">
+                            U.S. States
+                        </button>
+                        <button class="view-btn" data-scope="all" id="scopeAll">
+                            All
+                        </button>
+                    </div>
+                </div>
+
+                <div class="control-group search-control">
+                    <label class="control-label" for="countrySearch">Search & Add</label>
                     <div class="country-selector">
                         <div class="country-search-container">
                             <input type="text" id="countrySearch" class="country-search-input"
@@ -155,12 +261,15 @@
                     </div>
                 </div>
 
-                <div class="control-group" id="mapYearControl" style="display: none;">
+                <div class="control-group compact-control control-hidden" id="mapYearControl">
                     <label class="control-label">Map Year</label>
                     <div class="map-year-container">
                         <input type="range" id="mapYear" min="1960" max="2024" value="2023" class="year-slider single">
                         <span id="mapYearDisplay" class="year-value">2023</span>
-                        <button id="playBtn" class="play-button">▶️ Play</button>
+                        <button id="playBtn" class="play-button">
+                            <svg class="btn-icon"><use href="#icon-play"></use></svg>
+                            <span>Play</span>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -210,7 +319,7 @@
                         </div>
                     </div>
                     <div class="map-wrapper" id="mapWrapper">
-                        <svg id="worldMap" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+                        <svg id="worldMap" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid meet"></svg>
                         <div class="map-tooltip" id="mapTooltip"></div>
                     </div>
                 </div>
@@ -233,7 +342,10 @@
                         <table id="dataTable" class="sortable-table">
                             <thead>
                                 <tr>
-                                    <th data-sort="name" class="sortable">Country <span class="sort-icon">↕</span></th>
+                                    <th data-sort="name" class="sortable">Entity <span class="sort-icon">↕</span></th>
+                                    <th data-sort="value" class="sortable" id="headerValue">Indicator <span
+                                            class="sort-icon">↕</span>
+                                    </th>
                                     <th data-sort="gdp" class="sortable" id="headerGdp">GDP per Capita <span
                                             class="sort-icon">↕</span>
                                     </th>
@@ -257,14 +369,21 @@
                 <div class="data-table-container global-rankings-table" id="globalRankingsContainer"
                     style="display: none;">
                     <div class="table-header">
-                        <h3>🌍 Global Rankings (<span id="rankingYear">2023</span>)</h3>
+                        <h3>
+                            <svg class="section-icon"><use href="#icon-rankings"></use></svg>
+                            <span>Country Rankings</span>
+                            <span class="header-year" id="rankingYear">2023</span>
+                        </h3>
                         <div class="table-controls">
                             <input type="text" id="rankingSearch" placeholder="Search countries..."
                                 class="ranking-search">
                             <select id="rankingMetric" class="ranking-metric-select">
                                 <option value="gdp">GDP per Capita (USD)</option>
                                 <option value="ppp">PPP per Capita</option>
-                                <option value="growth">Growth Rate</option>
+                                <option value="ratio">Price Level Index</option>
+                                <option value="life_expectancy">Life Expectancy</option>
+                                <option value="population">Population</option>
+                                <option value="growth">5-Year Growth</option>
                             </select>
                         </div>
                     </div>
@@ -275,6 +394,7 @@
                                     <th data-sort="rank" class="sortable sorted-asc">Rank <span
                                             class="sort-icon">↑</span></th>
                                     <th data-sort="name" class="sortable">Country <span class="sort-icon">↕</span></th>
+                                    <th data-sort="value" class="sortable">Map Metric <span class="sort-icon">↕</span></th>
                                     <th data-sort="gdp" class="sortable">GDP (USD) <span class="sort-icon">↕</span></th>
                                     <th data-sort="ppp" class="sortable">PPP <span class="sort-icon">↕</span></th>
                                     <th data-sort="growth" class="sortable">Growth <span class="sort-icon">↕</span></th>
@@ -292,19 +412,28 @@
             <!-- Insights Panel -->
             <aside class="insights-panel">
                 <div class="insight-card">
-                    <h3 class="insight-title">📊 Key Insights</h3>
+                    <h3 class="insight-title">
+                        <svg class="section-icon"><use href="#icon-insights"></use></svg>
+                        Key Insights
+                    </h3>
                     <div class="insight-content" id="insightsContent">
                         <p class="insight-text">Select countries to view comparative insights and analysis.</p>
                     </div>
                 </div>
                 <div class="insight-card">
-                    <h3 class="insight-title">🔥 Top Performers</h3>
+                    <h3 class="insight-title">
+                        <svg class="section-icon"><use href="#icon-top"></use></svg>
+                        Top Performers
+                    </h3>
                     <div class="top-performers" id="topPerformers">
                         <!-- Will be populated dynamically -->
                     </div>
                 </div>
                 <div class="insight-card">
-                    <h3 class="insight-title">📉 Growth Trends</h3>
+                    <h3 class="insight-title">
+                        <svg class="section-icon"><use href="#icon-trends"></use></svg>
+                        Growth Trends
+                    </h3>
                     <div class="growth-trends" id="growthTrends">
                         <!-- Will be populated dynamically -->
                     </div>
@@ -327,7 +456,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
 </body>
 
 </html>

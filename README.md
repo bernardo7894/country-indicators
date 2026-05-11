@@ -1,6 +1,6 @@
-# Global GDP Explorer
+# Country Indicators Explorer
 
-An interactive macroeconomic data visualization tool to explore and compare **GDP per capita (Constant 2015 US$)** and **PPP per capita (Constant 2021 International $)** across 260+ countries and regions.
+An interactive macroeconomic data visualization tool to explore and compare GDP, PPP, price-level, life-expectancy, population, and growth indicators across countries and selected U.S. state data.
 
 ## Features
 
@@ -9,14 +9,18 @@ An interactive macroeconomic data visualization tool to explore and compare **GD
     - **PPP**: View historical Purchasing Power Parity adjusted GDP per capita.
     - **Compare**: Side-by-side comparison of GDP and PPP for specific countries.
     - **Ratio**: Analyze the ratio between GDP and PPP to understand currency valuation and cost of living differences.
-    - **Map**: Interactive choropleth world map with time-lapse animation.
+    - **Life Expectancy**: Compare health outcomes over time.
+    - **Population**: Explore population trends for countries.
+    - **GDP Growth**: Compare annual GDP-per-capita growth.
+    - **Map**: Interactive Equal Earth choropleth world map with switchable map metrics.
 - **Interactive Controls**:
-    - Multi-select countries with quick removal chips.
+    - Multi-select entities with quick removal chips.
+    - Separate scopes for countries and U.S. states so subdivisions do not mix into country rankings by default.
     - Responsive year range sliders (1960 - 2024).
     - GDP mode toggle (Per Capita vs Total GDP).
     - Map animation ("Play" mode) to visualize economic growth over time.
 - **Data Insights**:
-    - Automated comparative analysis between selected countries.
+    - Automated comparative analysis between selected entities.
     - Top performers and growth trend identification.
 - **Export Options**:
     - Download charts as PNG images.
@@ -48,4 +52,7 @@ Then open the provided local URL in your browser.
 Data is sourced from the **World Bank's World Development Indicators**:
 - `NY.GDP.PCAP.KD` (GDP per capita)
 - `NY.GDP.PCAP.PP.KD` (GDP per capita, PPP)
+- `SP.DYN.LE00.IN` (life expectancy)
+- `SP.POP.TOTL` (population)
+- U.S. state GDP, PPP, and life-expectancy CSV files included in the repository.
 - Last Updated: December 2025
