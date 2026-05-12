@@ -1,6 +1,6 @@
 # Country Indicators Explorer
 
-An interactive macroeconomic data visualization tool to explore and compare GDP, PPP, price-level, life-expectancy, population, and growth indicators across countries and selected U.S. state data.
+An interactive country indicators tool to explore and compare GDP, PPP, HDI, price-level, life-expectancy, population, and growth indicators across countries and selected U.S. state data.
 
 ## Features
 
@@ -9,6 +9,7 @@ An interactive macroeconomic data visualization tool to explore and compare GDP,
     - **PPP**: View historical Purchasing Power Parity adjusted GDP per capita.
     - **Compare**: Side-by-side comparison of GDP and PPP for specific countries.
     - **Ratio**: Analyze the ratio between GDP and PPP to understand currency valuation and cost of living differences.
+    - **HDI**: Compare the Human Development Index and switch the chart between HDI, life expectancy, expected schooling, mean schooling, and GNI per capita components.
     - **Life Expectancy**: Compare health outcomes over time.
     - **Population**: Explore population trends for countries.
     - **GDP Growth**: Compare annual GDP-per-capita growth.
@@ -16,7 +17,7 @@ An interactive macroeconomic data visualization tool to explore and compare GDP,
 - **Interactive Controls**:
     - Multi-select entities with quick removal chips.
     - Separate scopes for countries and U.S. states so subdivisions do not mix into country rankings by default.
-    - Responsive year range sliders (1960 - 2024).
+    - Responsive year range sliders (1960 - 2024 for World Bank indicators, 1990 - 2023 for UNDP HDI indicators).
     - GDP mode toggle (Per Capita vs Total GDP).
     - Map animation ("Play" mode) to visualize economic growth over time.
 - **Data Insights**:
@@ -49,10 +50,11 @@ npx http-server
 Then open the provided local URL in your browser.
 
 ## Data Source
-Data is sourced from the **World Bank's World Development Indicators**:
+Data is sourced from the **World Bank's World Development Indicators** and **UNDP Human Development Reports**:
 - `NY.GDP.PCAP.KD` (GDP per capita)
 - `NY.GDP.PCAP.PP.KD` (GDP per capita, PPP)
 - `SP.DYN.LE00.IN` (life expectancy)
 - `SP.POP.TOTL` (population)
+- UNDP 2025 composite indices complete time series (HDI, life expectancy, expected years of schooling, mean years of schooling, and GNI per capita, 1990 - 2023)
 - U.S. state GDP, PPP, and life-expectancy CSV files included in the repository.
-- Last Updated: December 2025
+- World Bank files last updated December 2025; UNDP HDI data is from the 2025 Human Development Report time series through 2023.

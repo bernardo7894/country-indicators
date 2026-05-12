@@ -406,7 +406,7 @@ body {
 
 .primary-tabs {
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-columns: repeat(9, minmax(0, 1fr));
     gap: 3px;
     width: 100%;
 }
@@ -668,7 +668,31 @@ body {
 
 .chart-actions {
     display: flex;
+    align-items: center;
     gap: var(--space-2);
+}
+
+.chart-metric-select {
+    min-height: 32px;
+    max-width: 210px;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.chart-metric-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.chart-metric-select.is-hidden {
+    display: none;
 }
 
 .action-btn {

@@ -9,6 +9,7 @@ const FILES = {
     GDP_CONSTANT: 'API_NY.GDP.PCAP.KD_DS2_en_csv_v2_141.csv',
     PPP_CURRENT: 'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_138.csv',
     PPP_CONSTANT: 'API_NY.GDP.PCAP.PP.KD_DS2_en_csv_v2_1423.csv',
+    HDI_COMPONENTS: 'hdi_components.csv',
     LIFE_EXPECTANCY: 'life_expectancy.csv',
     PPP_CONVERSION: 'countries_ppp_conversion_factor.csv',
     STATE_GDP_CURRENT: 'US_States_GDP_PC_Current.csv',
@@ -33,6 +34,11 @@ const DEFAULT_STATE_CODES = [
     'USA_ST_WASHINGTON'
 ];
 
+const FULL_YEAR_START = 1960;
+const FULL_YEAR_END = 2024;
+const HDI_YEAR_START = 1990;
+const HDI_YEAR_END = 2023;
+
 const AGGREGATE_CODES = new Set([
     'AFE', 'AFW', 'ARB', 'CEB', 'CSS', 'EAP', 'EAR', 'EAS', 'ECA', 'ECS',
     'EMU', 'EUU', 'FCS', 'HIC', 'HPC', 'IBD', 'IBT', 'IDA', 'IDB', 'IDX',
@@ -52,15 +58,53 @@ const VIEW_LABELS = {
     ppp: 'PPP',
     compare: 'GDP vs PPP',
     ratio: 'Price Level Index',
+    hdi: 'HDI',
     life_expectancy: 'Life Expectancy',
     population: 'Population',
     growth: 'GDP Growth',
     map: 'Map'
 };
 
+const HDI_METRICS = {
+    hdi: {
+        label: 'Human Development Index',
+        shortLabel: 'HDI',
+        yAxis: 'Index',
+        format: 'index'
+    },
+    hdi_life_expectancy: {
+        label: 'HDI Component: Life Expectancy',
+        shortLabel: 'Life Expectancy',
+        yAxis: 'Years',
+        format: 'years'
+    },
+    hdi_expected_schooling: {
+        label: 'HDI Component: Expected Years of Schooling',
+        shortLabel: 'Expected Schooling',
+        yAxis: 'Years',
+        format: 'years'
+    },
+    hdi_mean_schooling: {
+        label: 'HDI Component: Mean Years of Schooling',
+        shortLabel: 'Mean Schooling',
+        yAxis: 'Years',
+        format: 'years'
+    },
+    hdi_gni_per_capita: {
+        label: 'HDI Component: GNI per Capita (2021 PPP $)',
+        shortLabel: 'GNI per Capita',
+        yAxis: '2021 PPP $',
+        format: 'currency'
+    }
+};
+
+const HDI_METRIC_KEYS = Object.keys(HDI_METRICS);
+
 const MAP_COLOR_RAMPS = {
     sequential: ['#f5e6c8', '#d99a3d', '#c35d4a', '#7c5db6', '#334e7c'],
+    hdi: ['#f6e5c5', '#dda14b', '#be5f60', '#7064ad', '#225a7d'],
     health: ['#f7e8c9', '#e2a451', '#c15a49', '#7556a8', '#30466f'],
+    education: ['#f4e4c3', '#d99b48', '#bb6874', '#6f66ad', '#2d5578'],
     population: ['#f1e2c8', '#d28b3f', '#b45a54', '#78609c', '#2f4d76'],
     diverging: ['#b42318', '#d98f45', '#f2dfb1', '#7f8dbd', '#334e7c']
 };
@@ -84,6 +128,11 @@ const state = {
         gdpConstantTotal: {},
         pppCurrent: {},
         pppConstant: {},
+        hdi: {},
+        hdi_life_expectancy: {},
+        hdi_expected_schooling: {},
+        hdi_mean_schooling: {},
+        hdi_gni_per_capita: {},
         lifeExpectancy: {},
         population: {},
         pppConversion: {}
@@ -100,8 +149,9 @@ const state = {
     currentView: 'gdp', // 'gdp', 'ppp', 'compare', 'ratio', 'map'
     priceType: 'constant', // 'current', 'constant'
     gdpMode: 'per_capita', // 'per_capita', 'total'
+    hdiMetric: 'hdi',
     yearStart: 1990,
-    yearEnd: 2024,
+    yearEnd: FULL_YEAR_END,
     mapYear: 2023,
     mapMetric: 'gdp',
     chart: null,
@@ -192,7 +242,7 @@ async function init() {
     const [
         gdpCurRaw, gdpConstRaw, pppCurRaw, pppConstRaw, pppConversionRaw, geoRaw,
         stateGdpCur, stateGdpConst, statePppCur, statePppConst, lifeExpRaw, stateLifeExpRaw,
-        populationApiRaw, statePopulationRaw
+        populationApiRaw, statePopulationRaw, hdiRaw
     ] = await Promise.all([
         fetch(FILES.GDP_CURRENT).then(res => res.text()),
         fetch(FILES.GDP_CONSTANT).then(res => res.text()),
@@ -207,7 +257,8 @@ async function init() {
         fetch(FILES.LIFE_EXPECTANCY).then(res => res.text()),
         fetch(FILES.STATE_LIFE_EXPECTANCY).then(res => res.text()),
         fetch(POPULATION_API_URL).then(res => res.json()),
-        fetchOptionalText(FILES.STATE_POPULATION)
+        fetchOptionalText(FILES.STATE_POPULATION),
+        fetch(FILES.HDI_COMPONENTS).then(res => res.text())
     ]);
 
     // 2. Parse Country Data
@@ -217,9 +268,13 @@ async function init() {
     state.rawData.pppConstant = parseCSV(pppConstRaw);
     state.rawData.lifeExpectancy = parseCSV(lifeExpRaw);
     state.rawData.pppConversion = parseWorldBankWideCSV(pppConversionRaw);
+    Object.assign(state.rawData, parseHDIComponentsCSV(hdiRaw));
 
     tagWorldBankEntities();
-    state.countryCodes = new Set(Object.keys(state.rawData.gdpCurrent)
+    state.countryCodes = new Set([
+        ...Object.keys(state.rawData.gdpCurrent),
+        ...Object.keys(state.rawData.hdi)
+    ]
         .filter(code => !AGGREGATE_CODES.has(code)));
 
     // 3. Parse and Merge State Data
@@ -252,6 +307,8 @@ async function init() {
     populateCountrySelector();
     setupCountrySearch();
     updateCountryChips();
+    syncYearControlsForView();
+    syncMapYearControlForMetric();
 
     // 6. Initial Render
     // 6. Initial Render
@@ -266,14 +323,14 @@ function loadSettings() {
 
     if (savedStart) {
         let start = parseInt(savedStart);
-        if (!isNaN(start) && start >= 1960 && start <= 2024) {
+        if (!isNaN(start) && start >= FULL_YEAR_START && start <= FULL_YEAR_END) {
             state.yearStart = start;
         }
     }
 
     if (savedEnd) {
         let end = parseInt(savedEnd);
-        if (!isNaN(end) && end >= 1960 && end <= 2024) {
+        if (!isNaN(end) && end >= FULL_YEAR_START && end <= FULL_YEAR_END) {
             state.yearEnd = end;
         }
     }
@@ -281,7 +338,7 @@ function loadSettings() {
     // Validate range
     if (state.yearStart >= state.yearEnd) {
         state.yearStart = 1990;
-        state.yearEnd = 2024;
+        state.yearEnd = FULL_YEAR_END;
     }
 
     // Update UI elements
@@ -453,6 +510,71 @@ function parseWorldBankWideCSV(csvText) {
     return data;
 }
 
+function parseHDIComponentsCSV(csvText) {
+    const lines = csvText.trim().split('\n');
+    const datasets = HDI_METRIC_KEYS.reduce((acc, metric) => {
+        acc[metric] = {};
+        return acc;
+    }, {});
+
+    if (lines.length < 2) return datasets;
+
+    const headers = parseCSVLine(lines[0]);
+    const codeIndex = headers.indexOf('Country Code');
+    const nameIndex = headers.indexOf('Country Name');
+    const groupIndex = headers.indexOf('HDI Group');
+    const regionIndex = headers.indexOf('Region');
+    const rankIndex = headers.indexOf('HDI Rank 2023');
+
+    const metricYearColumns = HDI_METRIC_KEYS.reduce((acc, metric) => {
+        const prefix = `${metric}_`;
+        acc[metric] = headers
+            .map((header, index) => {
+                if (!header.startsWith(prefix)) return null;
+                const year = header.slice(prefix.length);
+                return /^\d{4}$/.test(year) ? { year, index } : null;
+            })
+            .filter(Boolean);
+        return acc;
+    }, {});
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+
+        const parts = parseCSVLine(line);
+        const code = (parts[codeIndex] || '').trim();
+        const name = (parts[nameIndex] || code).trim();
+        if (!code || !name) continue;
+
+        const hdiGroup = (parts[groupIndex] || '').trim();
+        const hdiRegion = (parts[regionIndex] || '').trim();
+        const rankValue = parseFloat(parts[rankIndex]);
+        const hdiRank2023 = isNaN(rankValue) ? null : Math.round(rankValue);
+
+        HDI_METRIC_KEYS.forEach(metric => {
+            const values = {};
+            metricYearColumns[metric].forEach(({ year, index }) => {
+                const raw = parts[index];
+                const value = parseFloat(raw);
+                values[year] = raw && raw !== '..' && !isNaN(value) ? value : null;
+            });
+
+            datasets[metric][code] = {
+                name,
+                values,
+                type: 'country',
+                scopeLabel: 'country',
+                hdiGroup,
+                hdiRegion,
+                hdiRank2023
+            };
+        });
+    }
+
+    return datasets;
+}
+
 async function fetchOptionalText(url) {
     try {
         const response = await fetch(url);
@@ -574,12 +696,90 @@ function isSubdivisionCode(code) {
     return state.subdivisionCodes.has(code);
 }
 
+function isHdiMetric(metric) {
+    return Object.prototype.hasOwnProperty.call(HDI_METRICS, metric);
+}
+
+function getActiveMetric(view = state.currentView) {
+    if (view === 'compare') return 'gdp';
+    if (view === 'hdi') return state.hdiMetric;
+    if (view === 'map') return state.mapMetric;
+    return view;
+}
+
+function getMetricYearRange(metric = getActiveMetric()) {
+    return isHdiMetric(metric) ?
+        { min: HDI_YEAR_START, max: HDI_YEAR_END } :
+        { min: FULL_YEAR_START, max: FULL_YEAR_END };
+}
+
+function clampYearToMetric(metric, year) {
+    const range = getMetricYearRange(metric);
+    return Math.max(range.min, Math.min(range.max, Number(year)));
+}
+
+function syncYearControlsForView() {
+    const metric = getActiveMetric();
+    const range = getMetricYearRange(metric);
+    const yearStartInput = document.getElementById('yearStart');
+    const yearEndInput = document.getElementById('yearEnd');
+
+    state.yearStart = clampYearToMetric(metric, state.yearStart);
+    state.yearEnd = clampYearToMetric(metric, state.yearEnd);
+    if (state.yearStart >= state.yearEnd) {
+        state.yearStart = range.min;
+        state.yearEnd = range.max;
+    }
+
+    if (yearStartInput) {
+        yearStartInput.min = range.min;
+        yearStartInput.max = range.max;
+        yearStartInput.value = state.yearStart;
+    }
+
+    if (yearEndInput) {
+        yearEndInput.min = range.min;
+        yearEndInput.max = range.max;
+        yearEndInput.value = state.yearEnd;
+    }
+
+    const startDisplay = document.getElementById('yearStartDisplay');
+    const endDisplay = document.getElementById('yearEndDisplay');
+    if (startDisplay) startDisplay.textContent = state.yearStart;
+    if (endDisplay) endDisplay.textContent = state.yearEnd;
+}
+
+function syncMapYearControlForMetric(metric = state.mapMetric) {
+    const range = getMetricYearRange(metric);
+    const mapYearInput = document.getElementById('mapYear');
+    state.mapYear = clampYearToMetric(metric, state.mapYear);
+
+    if (mapYearInput) {
+        mapYearInput.min = range.min;
+        mapYearInput.max = range.max;
+        mapYearInput.value = state.mapYear;
+    }
+
+    const mapYearDisplay = document.getElementById('mapYearDisplay');
+    if (mapYearDisplay) mapYearDisplay.textContent = state.mapYear;
+}
+
+function hasAnyCountryData(code) {
+    return state.rawData.gdpCurrent[code] ||
+        state.rawData.pppCurrent[code] ||
+        state.rawData.lifeExpectancy[code] ||
+        state.rawData.population[code] ||
+        state.rawData.hdi[code] ||
+        state.rawData.pppConversion[code];
+}
+
 function getEntityMeta(code) {
     const source =
         state.rawData.gdpCurrent[code] ||
         state.rawData.pppCurrent[code] ||
         state.rawData.lifeExpectancy[code] ||
         state.rawData.population[code] ||
+        state.rawData.hdi[code] ||
         state.rawData.pppConversion[code];
 
     if (!source) {
@@ -596,7 +796,7 @@ function getEntityMeta(code) {
 }
 
 function getSelectableCodesForScope(scope = state.entityScope) {
-    const countries = [...state.countryCodes].filter(code => state.rawData.gdpCurrent[code]);
+    const countries = [...state.countryCodes].filter(hasAnyCountryData);
     const subdivisions = [...state.subdivisionCodes].filter(code => state.rawData.gdpCurrent[code]);
 
     if (scope === 'states') return subdivisions;
@@ -792,6 +992,14 @@ function setControlEnabled(element, isEnabled) {
     });
 }
 
+function setHDIMetricSelectVisibility(isVisible) {
+    const select = document.getElementById('hdiMetricSelect');
+    if (!select) return;
+    select.classList.toggle('is-hidden', !isVisible);
+    select.disabled = !isVisible;
+    select.value = state.hdiMetric;
+}
+
 function setEntityScope(scope) {
     state.entityScope = scope;
     document.querySelectorAll('[data-scope]').forEach(btn => {
@@ -826,7 +1034,7 @@ function setEntityScope(scope) {
     updateDataTable();
 }
 
-function ensureCountrySelectionForMap() {
+function ensureCountryOnlySelection() {
     if (state.entityScope === 'states') {
         state.entityScope = 'countries';
         document.querySelectorAll('[data-scope]').forEach(btn => {
@@ -884,9 +1092,11 @@ function setupEventListeners() {
             btn.classList.add('active');
             state.currentView = btn.dataset.view;
 
-            if (state.currentView === 'map') {
-                ensureCountrySelectionForMap();
+            if (state.currentView === 'map' || state.currentView === 'hdi') {
+                ensureCountryOnlySelection();
             }
+            syncYearControlsForView();
+            syncMapYearControlForMetric();
 
             // Toggle containers
             if (state.currentView === 'map') {
@@ -903,10 +1113,12 @@ function setupEventListeners() {
 
             setControlVisibility(document.getElementById('mapYearControl'), state.currentView === 'map');
             setControlEnabled(document.getElementById('gdpModeControl'), state.currentView === 'gdp');
+            setControlEnabled(document.getElementById('scopeControl'), !['map', 'hdi'].includes(state.currentView));
+            setHDIMetricSelectVisibility(state.currentView === 'hdi');
 
             // Handle Price Type Restrictions
             const priceBtns = document.querySelectorAll('[data-price]');
-            if (['ratio', 'life_expectancy', 'population'].includes(state.currentView)) {
+            if (['ratio', 'hdi', 'life_expectancy', 'population'].includes(state.currentView)) {
                 // These indicators don't use price types.
                 if (state.currentView === 'ratio') setPriceType('current');
                 priceBtns.forEach(b => b.classList.add('disabled'));
@@ -947,6 +1159,16 @@ function setupEventListeners() {
         });
     });
 
+    const hdiMetricSelect = document.getElementById('hdiMetricSelect');
+    if (hdiMetricSelect) {
+        hdiMetricSelect.addEventListener('change', (e) => {
+            state.hdiMetric = e.target.value;
+            syncYearControlsForView();
+            updateVisualization();
+            updateInsights();
+        });
+    }
+
     // Country Selector
     document.getElementById('countrySelect').addEventListener('change', (e) => {
         const options = e.target.selectedOptions;
@@ -965,9 +1187,10 @@ function setupEventListeners() {
     const yearEnd = document.getElementById('yearEnd');
 
     yearStart.addEventListener('input', (e) => {
+        const range = getMetricYearRange(getActiveMetric());
         state.yearStart = parseInt(e.target.value);
         if (state.yearStart >= state.yearEnd) {
-            state.yearEnd = Math.min(2024, state.yearStart + 1);
+            state.yearEnd = Math.min(range.max, state.yearStart + 1);
             yearEnd.value = state.yearEnd;
             document.getElementById('yearEndDisplay').textContent = state.yearEnd;
         }
@@ -978,9 +1201,10 @@ function setupEventListeners() {
     });
 
     yearEnd.addEventListener('input', (e) => {
+        const range = getMetricYearRange(getActiveMetric());
         state.yearEnd = parseInt(e.target.value);
         if (state.yearEnd <= state.yearStart) {
-            state.yearStart = Math.max(1960, state.yearEnd - 1);
+            state.yearStart = Math.max(range.min, state.yearEnd - 1);
             yearStart.value = state.yearStart;
             document.getElementById('yearStartDisplay').textContent = state.yearStart;
         }
@@ -1067,8 +1291,9 @@ function togglePlay() {
         btn.innerHTML = '<svg class="btn-icon"><use href="#icon-pause"></use></svg><span>Pause</span>';
         state.isPlaying = true;
         state.playInterval = setInterval(() => {
+            const range = getMetricYearRange(state.mapMetric);
             state.mapYear++;
-            if (state.mapYear > 2024) state.mapYear = 1960;
+            if (state.mapYear > range.max) state.mapYear = range.min;
             document.getElementById('mapYear').value = state.mapYear;
             document.getElementById('mapYearDisplay').textContent = state.mapYear;
             renderMap();
@@ -1096,6 +1321,8 @@ function getSeriesForView(view = state.currentView) {
     switch (view) {
         case 'ppp':
             return state.pppData;
+        case 'hdi':
+            return state.rawData[state.hdiMetric] || {};
         case 'life_expectancy':
             return state.lifeExpectancyData;
         case 'population':
@@ -1110,6 +1337,8 @@ function getSeriesForView(view = state.currentView) {
 }
 
 function getMetricLabel(metric = state.currentView) {
+    if (isHdiMetric(metric)) return HDI_METRICS[metric].label;
+
     switch (metric) {
         case 'gdp':
             return state.gdpMode === 'total' ?
@@ -1133,6 +1362,8 @@ function getMetricLabel(metric = state.currentView) {
 }
 
 function getYAxisLabel(metric = state.currentView) {
+    if (isHdiMetric(metric)) return HDI_METRICS[metric].yAxis;
+
     switch (metric) {
         case 'ppp':
             return 'International $';
@@ -1153,6 +1384,20 @@ function formatMetricValue(value, metric = state.currentView, options = {}) {
     if (value === null || value === undefined || isNaN(value)) return 'N/A';
     const compact = options.compact || false;
 
+    if (isHdiMetric(metric)) {
+        const format = HDI_METRICS[metric].format;
+        if (format === 'index') return value.toFixed(3);
+        if (format === 'years') return `${value.toFixed(1)} yrs`;
+        if (format === 'currency') {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                notation: compact ? 'compact' : 'standard',
+                maximumFractionDigits: compact ? 1 : 0
+            }).format(value);
+        }
+    }
+
     if (metric === 'ratio') return value.toFixed(3);
     if (metric === 'life_expectancy') return `${value.toFixed(1)} yrs`;
     if (metric === 'population') {
@@ -1172,6 +1417,7 @@ function formatMetricValue(value, metric = state.currentView, options = {}) {
 }
 
 function getMetricValue(code, year, metric = state.currentView) {
+    if (isHdiMetric(metric)) return state.rawData[metric]?.[code]?.values?.[year] ?? null;
     if (metric === 'ppp') return state.pppData[code]?.values?.[year] ?? null;
     if (metric === 'life_expectancy') return state.lifeExpectancyData[code]?.values?.[year] ?? null;
     if (metric === 'population') return state.populationData[code]?.values?.[year] ?? null;
@@ -1201,8 +1447,9 @@ function renderChart() {
     for (let i = state.yearStart; i <= state.yearEnd; i++) years.push(i);
 
     let datasets = [];
-    let title = getMetricLabel();
-    let yAxisLabel = getYAxisLabel();
+    const activeMetric = getActiveMetric();
+    let title = getMetricLabel(activeMetric);
+    let yAxisLabel = getYAxisLabel(activeMetric);
 
     switch (state.currentView) {
         case 'gdp':
@@ -1213,6 +1460,9 @@ function renderChart() {
             break;
         case 'ratio':
             datasets = createRatioDatasets(years);
+            break;
+        case 'hdi':
+            datasets = createDatasets(state.rawData[state.hdiMetric] || {}, years);
             break;
         case 'compare':
             title = 'GDP vs PPP Comparison';
@@ -1267,7 +1517,7 @@ function renderChart() {
                             let label = context.dataset.label || '';
                             if (label) label += ': ';
                             if (context.parsed.y !== null) {
-                                label += formatMetricValue(context.parsed.y, state.currentView);
+                                label += formatMetricValue(context.parsed.y, activeMetric);
                             }
                             return label;
                         }
@@ -1289,7 +1539,7 @@ function renderChart() {
                     border: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#e5e7eb' }
                 },
                 y: {
-                    min: state.currentView === 'growth' ? undefined : 0,
+                    min: activeMetric === 'growth' ? undefined : 0,
                     grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim() || '#f3f4f6' },
                     ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim() || '#6b7280', font: { size: 11 } },
                     border: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-border').trim() || '#e5e7eb' },
@@ -1620,6 +1870,12 @@ function showMapTooltip(path, tooltip, event) {
             <span class="tooltip-value">${stat?.ratio ? stat.ratio.toFixed(3) : 'N/A'}</span>
             <span class="tooltip-label">Life:</span>
             <span class="tooltip-value">${formatMetricValue(stat?.lifeExpectancy, 'life_expectancy')}</span>
+            <span class="tooltip-label">HDI:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.hdi, 'hdi')}${stat?.hdiRank2023 ? ` (#${stat.hdiRank2023})` : ''}</span>
+            <span class="tooltip-label">Schooling:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.hdiExpectedSchooling, 'hdi_expected_schooling')} / ${formatMetricValue(stat?.hdiMeanSchooling, 'hdi_mean_schooling')}</span>
+            <span class="tooltip-label">GNI pc:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.hdiGniPerCapita, 'hdi_gni_per_capita', { compact: true })}</span>
             <span class="tooltip-label">Population:</span>
             <span class="tooltip-value">${formatMetricValue(stat?.population, 'population', { compact: true })}</span>
             <span class="tooltip-label">5yr Growth:</span>
@@ -1640,7 +1896,7 @@ function getPreparedMapGeometry() {
     const project = createEqualEarthProjector(features, MAP_WIDTH, MAP_HEIGHT);
     const countryCodeByName = new Map(
         [...state.countryCodes]
-            .map(code => [code, state.gdpData[code]])
+            .map(code => [code, getEntityMeta(code)])
             .filter(([, country]) => country?.name)
             .map(([code, country]) => [normalizeCountryName(country.name), code])
     );
@@ -1674,9 +1930,27 @@ function buildMapCountryStats(year, metric) {
         const ppp = state.pppData[code]?.values?.[year] ?? null;
         const population = state.populationData[code]?.values?.[year] ?? null;
         const lifeExpectancy = state.lifeExpectancyData[code]?.values?.[year] ?? null;
+        const hdi = getMetricValue(code, year, 'hdi');
+        const hdiLifeExpectancy = getMetricValue(code, year, 'hdi_life_expectancy');
+        const hdiExpectedSchooling = getMetricValue(code, year, 'hdi_expected_schooling');
+        const hdiMeanSchooling = getMetricValue(code, year, 'hdi_mean_schooling');
+        const hdiGniPerCapita = getMetricValue(code, year, 'hdi_gni_per_capita');
+        const hdiMeta = state.rawData.hdi[code];
         const ratio = getMetricValue(code, year, 'ratio');
         const growth = getFiveYearGrowth(code, year);
-        const value = getMapMetricValue(code, year, metric, { gdp, ppp, population, lifeExpectancy, ratio, growth });
+        const value = getMapMetricValue(code, year, metric, {
+            gdp,
+            ppp,
+            population,
+            lifeExpectancy,
+            hdi,
+            hdiLifeExpectancy,
+            hdiExpectedSchooling,
+            hdiMeanSchooling,
+            hdiGniPerCapita,
+            ratio,
+            growth
+        });
 
         if (value === null || value === undefined || isNaN(value)) return null;
 
@@ -1688,6 +1962,13 @@ function buildMapCountryStats(year, metric) {
             ppp,
             population,
             lifeExpectancy,
+            hdi,
+            hdiLifeExpectancy,
+            hdiExpectedSchooling,
+            hdiMeanSchooling,
+            hdiGniPerCapita,
+            hdiGroup: hdiMeta?.hdiGroup || '',
+            hdiRank2023: hdiMeta?.hdiRank2023 ?? null,
             ratio,
             growth
         };
@@ -1706,6 +1987,16 @@ function getMapMetricValue(code, year, metric, cached = {}) {
             return cached.ppp ?? getMetricValue(code, year, 'ppp');
         case 'ratio':
             return cached.ratio ?? getMetricValue(code, year, 'ratio');
+        case 'hdi':
+            return cached.hdi ?? getMetricValue(code, year, 'hdi');
+        case 'hdi_life_expectancy':
+            return cached.hdiLifeExpectancy ?? getMetricValue(code, year, 'hdi_life_expectancy');
+        case 'hdi_expected_schooling':
+            return cached.hdiExpectedSchooling ?? getMetricValue(code, year, 'hdi_expected_schooling');
+        case 'hdi_mean_schooling':
+            return cached.hdiMeanSchooling ?? getMetricValue(code, year, 'hdi_mean_schooling');
+        case 'hdi_gni_per_capita':
+            return cached.hdiGniPerCapita ?? getMetricValue(code, year, 'hdi_gni_per_capita');
         case 'life_expectancy':
             return cached.lifeExpectancy ?? getMetricValue(code, year, 'life_expectancy');
         case 'population':
@@ -1722,10 +2013,7 @@ function createMapColorScale(values, metric) {
     const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#e4e5eb';
     if (!values.length) return () => noDataColor;
 
-    const ramp = metric === 'growth' ? MAP_COLOR_RAMPS.diverging :
-        metric === 'life_expectancy' ? MAP_COLOR_RAMPS.health :
-            metric === 'population' ? MAP_COLOR_RAMPS.population :
-                MAP_COLOR_RAMPS.sequential;
+    const ramp = getMapColorRamp(metric);
 
     if (metric === 'growth') {
         const maxAbs = Math.max(...values.map(value => Math.abs(value))) || 1;
@@ -1739,7 +2027,7 @@ function createMapColorScale(values, metric) {
     const positiveValues = values.filter(value => value > 0);
     const min = Math.min(...positiveValues);
     const max = Math.max(...positiveValues);
-    const useLog = ['gdp', 'ppp', 'population'].includes(metric);
+    const useLog = ['gdp', 'ppp', 'population', 'hdi_gni_per_capita'].includes(metric);
 
     return value => {
         if (value === null || value === undefined || isNaN(value)) return noDataColor;
@@ -1760,10 +2048,7 @@ function updateMapLegend(values, metric) {
     const gradient = document.querySelector('.gradient-bar');
     if (!minEl || !maxEl || !gradient) return;
 
-    const ramp = metric === 'growth' ? MAP_COLOR_RAMPS.diverging :
-        metric === 'life_expectancy' ? MAP_COLOR_RAMPS.health :
-            metric === 'population' ? MAP_COLOR_RAMPS.population :
-                MAP_COLOR_RAMPS.sequential;
+    const ramp = getMapColorRamp(metric);
     gradient.style.background = `linear-gradient(to right, ${ramp.join(', ')})`;
 
     if (!values.length) {
@@ -1776,6 +2061,15 @@ function updateMapLegend(values, metric) {
     const max = Math.max(...values);
     minEl.textContent = formatMetricValue(min, metric, { compact: true });
     maxEl.textContent = formatMetricValue(max, metric, { compact: true });
+}
+
+function getMapColorRamp(metric) {
+    if (metric === 'growth') return MAP_COLOR_RAMPS.diverging;
+    if (metric === 'hdi') return MAP_COLOR_RAMPS.hdi;
+    if (metric === 'life_expectancy' || metric === 'hdi_life_expectancy') return MAP_COLOR_RAMPS.health;
+    if (metric === 'hdi_expected_schooling' || metric === 'hdi_mean_schooling') return MAP_COLOR_RAMPS.education;
+    if (metric === 'population') return MAP_COLOR_RAMPS.population;
+    return MAP_COLOR_RAMPS.sequential;
 }
 
 function interpolateRamp(colors, t) {
@@ -2066,24 +2360,38 @@ function updateDataTable() {
     const tbody = document.getElementById('dataTableBody');
     tbody.innerHTML = '';
 
-    const latestYear = state.yearEnd;
-    const prevYear = state.yearStart;
-    const metric = state.currentView === 'compare' ? 'gdp' : state.currentView;
+    const metric = getActiveMetric();
+    const latestYear = clampYearToMetric(metric, state.yearEnd);
+    const prevYear = clampYearToMetric(metric, state.yearStart);
+    const isHDIView = state.currentView === 'hdi';
 
     const gdpHeader = document.getElementById('headerGdp');
     const pppHeader = document.getElementById('headerPpp');
     const valueHeader = document.getElementById('headerValue');
+    const ratioHeader = document.querySelector('th[data-sort="ratio"]');
+    const growthHeader = document.querySelector('th[data-sort="growth"]');
     if (gdpHeader && pppHeader && valueHeader) {
-        const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015';
-        const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
-        valueHeader.innerHTML = `${getMetricLabel(metric)} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
-        const gdpLabel = state.gdpMode === 'total' && state.currentView === 'gdp' ? 'GDP' : 'GDP per Capita';
-        gdpHeader.innerHTML = `${gdpLabel} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
-        pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
-
-        const growthHeader = document.querySelector('th[data-sort="growth"]');
-        if (growthHeader) {
-            growthHeader.innerHTML = `Change <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearStart}-${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+        if (isHDIView) {
+            valueHeader.innerHTML = `HDI <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+            gdpHeader.innerHTML = `Life Expectancy <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+            pppHeader.innerHTML = `Expected Schooling <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+            if (ratioHeader) {
+                ratioHeader.innerHTML = `Mean Schooling <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+            }
+            if (growthHeader) {
+                growthHeader.innerHTML = `GNI per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+            }
+        } else {
+            const typeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2015';
+            const pppTypeLabel = state.priceType === 'current' ? 'Current' : 'Constant 2021';
+            valueHeader.innerHTML = `${getMetricLabel(metric)} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${latestYear})</span> <span class="sort-icon">↕</span>`;
+            const gdpLabel = state.gdpMode === 'total' && state.currentView === 'gdp' ? 'GDP' : 'GDP per Capita';
+            gdpHeader.innerHTML = `${gdpLabel} <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${typeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+            pppHeader.innerHTML = `PPP per Capita <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${pppTypeLabel}, ${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+            if (ratioHeader) ratioHeader.innerHTML = `Price Level Index (PLI) <span class="sort-icon">↕</span>`;
+            if (growthHeader) {
+                growthHeader.innerHTML = `Change <span class="header-subtitle" style="font-size:0.8em; opacity:0.7">(${state.yearStart}-${state.yearEnd})</span> <span class="sort-icon">↕</span>`;
+            }
         }
     }
 
@@ -2099,11 +2407,19 @@ function updateDataTable() {
 
     const tableData = codesToShow.map(code => {
         const meta = getEntityMeta(code);
-        const gdp = state.gdpData[code]?.values?.[latestYear] ?? null;
-        const ppp = state.pppData[code]?.values?.[latestYear] ?? null;
-        const ratio = getMetricValue(code, latestYear, 'ratio');
-        const value = getMetricValue(code, latestYear, metric);
-        const growth = getMetricPeriodChange(code, prevYear, latestYear, metric);
+        const value = isHDIView ? getMetricValue(code, latestYear, 'hdi') : getMetricValue(code, latestYear, metric);
+        const gdp = isHDIView ?
+            getMetricValue(code, latestYear, 'hdi_life_expectancy') :
+            state.gdpData[code]?.values?.[latestYear] ?? null;
+        const ppp = isHDIView ?
+            getMetricValue(code, latestYear, 'hdi_expected_schooling') :
+            state.pppData[code]?.values?.[latestYear] ?? null;
+        const ratio = isHDIView ?
+            getMetricValue(code, latestYear, 'hdi_mean_schooling') :
+            getMetricValue(code, latestYear, 'ratio');
+        const growth = isHDIView ?
+            getMetricValue(code, latestYear, 'hdi_gni_per_capita') :
+            getMetricPeriodChange(code, prevYear, latestYear, metric);
 
         if (value === null && gdp === null && ppp === null) return null;
 
@@ -2116,7 +2432,13 @@ function updateDataTable() {
             gdp,
             ppp,
             ratio,
-            growth
+            growth,
+            valueMetric: isHDIView ? 'hdi' : metric,
+            gdpMetric: isHDIView ? 'hdi_life_expectancy' : 'gdp',
+            pppMetric: isHDIView ? 'hdi_expected_schooling' : 'ppp',
+            ratioMetric: isHDIView ? 'hdi_mean_schooling' : 'ratio',
+            growthMetric: isHDIView ? 'hdi_gni_per_capita' : 'growth',
+            isHDIView
         };
     }).filter(d => d !== null);
 
@@ -2172,12 +2494,12 @@ function updateDataTable() {
                     <span class="entity-meta">${escapeHTML(d.scopeLabel)}</span>
                 </span>
             </td>
-            <td>${formatMetricValue(d.value, d.metric, { compact: true })}</td>
-            <td>${formatMetricValue(d.gdp, 'gdp', { compact: true })}</td>
-            <td>${formatMetricValue(d.ppp, 'ppp', { compact: true })}</td>
-            <td>${d.ratio ? d.ratio.toFixed(3) : 'N/A'}</td>
-            <td class="${d.growth !== null ? (d.growth >= 0 ? 'positive' : 'negative') : ''}">
-                ${d.growth !== null ? (d.growth >= 0 ? '+' : '') + d.growth.toFixed(1) + '%' : 'N/A'}
+            <td>${formatMetricValue(d.value, d.valueMetric, { compact: true })}</td>
+            <td>${formatMetricValue(d.gdp, d.gdpMetric, { compact: true })}</td>
+            <td>${formatMetricValue(d.ppp, d.pppMetric, { compact: true })}</td>
+            <td>${formatMetricValue(d.ratio, d.ratioMetric, { compact: true })}</td>
+            <td class="${!d.isHDIView && d.growth !== null ? (d.growth >= 0 ? 'positive' : 'negative') : ''}">
+                ${d.isHDIView ? formatMetricValue(d.growth, d.growthMetric, { compact: true }) : (d.growth !== null ? (d.growth >= 0 ? '+' : '') + d.growth.toFixed(1) + '%' : 'N/A')}
             </td>
             <td>
                 ${actionBtn}
@@ -2199,12 +2521,10 @@ function updateInsights() {
         return;
     }
 
-    const metric = state.currentView === 'compare' ? 'gdp' :
-        state.currentView === 'map' ? state.mapMetric :
-            state.currentView;
+    const metric = getActiveMetric();
     const dataLabel = getMetricLabel(metric);
-    const startYear = state.yearStart;
-    const endYear = state.yearEnd;
+    const startYear = clampYearToMetric(metric, state.yearStart);
+    const endYear = clampYearToMetric(metric, state.yearEnd);
     const yearSpan = endYear - startYear;
 
     const countryStats = state.selectedCountries
@@ -2302,19 +2622,52 @@ function hideLoading() {
 
 function downloadChart() {
     const link = document.createElement('a');
-    link.download = `gdp-explorer-${state.currentView}.png`;
+    link.download = `country-indicators-${getActiveMetric()}.png`;
     link.href = document.getElementById('mainChart').toDataURL('image/png');
     link.click();
 }
 
 function exportToCSV() {
-    let csv = 'Country,Year,GDP_USD,PPP_Intl,Ratio\n';
+    const metric = getActiveMetric();
+    const startYear = clampYearToMetric(metric, state.yearStart);
+    const endYear = clampYearToMetric(metric, state.yearEnd);
+    const columns = [
+        'Entity',
+        'Code',
+        'Year',
+        getMetricLabel(metric),
+        'GDP_USD',
+        'PPP_Intl',
+        'Price_Level_Index',
+        'HDI',
+        'HDI_Life_Expectancy',
+        'HDI_Expected_Schooling',
+        'HDI_Mean_Schooling',
+        'HDI_GNI_Per_Capita_2021_PPP'
+    ];
+    let csv = `${columns.map(csvEscape).join(',')}\n`;
+
     state.selectedCountries.forEach(code => {
-        for (let y = state.yearStart; y <= state.yearEnd; y++) {
-            const g = state.gdpData[code].values[y] || '';
-            const p = state.pppData[code]?.values[y] || '';
-            const r = (g && p) ? (g / p).toFixed(4) : '';
-            csv += `"${state.gdpData[code].name}",${y},${g},${p},${r}\n`;
+        const meta = getEntityMeta(code);
+        for (let y = startYear; y <= endYear; y++) {
+            const gdp = state.gdpData[code]?.values?.[y] ?? '';
+            const ppp = state.pppData[code]?.values?.[y] ?? '';
+            const ratio = getMetricValue(code, y, 'ratio') ?? '';
+            const row = [
+                meta.name,
+                code,
+                y,
+                getMetricValue(code, y, metric) ?? '',
+                gdp,
+                ppp,
+                ratio,
+                getMetricValue(code, y, 'hdi') ?? '',
+                getMetricValue(code, y, 'hdi_life_expectancy') ?? '',
+                getMetricValue(code, y, 'hdi_expected_schooling') ?? '',
+                getMetricValue(code, y, 'hdi_mean_schooling') ?? '',
+                getMetricValue(code, y, 'hdi_gni_per_capita') ?? ''
+            ];
+            csv += `${row.map(csvEscape).join(',')}\n`;
         }
     });
 
@@ -2322,8 +2675,13 @@ function exportToCSV() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.setAttribute('href', url);
-    a.setAttribute('download', 'gdp_data_export.csv');
+    a.setAttribute('download', `country_indicators_${metric}_export.csv`);
     a.click();
+}
+
+function csvEscape(value) {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 // ============================================
@@ -2454,6 +2812,7 @@ function setupGlobalRankingsListeners() {
     if (metricSelect) {
         metricSelect.addEventListener('change', (e) => {
             state.mapMetric = e.target.value;
+            syncMapYearControlForMetric(state.mapMetric);
             rankingsSortField = 'value';
             rankingsSortAsc = false;
             if (state.currentView === 'map') {

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Interactive country indicators explorer - compare GDP, PPP, population, health, and growth indicators with charts and a world map.">
+        content="Interactive country indicators explorer - compare GDP, PPP, HDI, population, health, and growth indicators with charts and a world map.">
     <title>Country Indicators Explorer | Economic Data Visualization</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +13,7 @@
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=8">
 </head>
 
 <body>
@@ -49,6 +49,16 @@
                 stroke-linecap="round" stroke-linejoin="round" />
             <path d="M16 7.5h3.5V11" fill="none" stroke="currentColor" stroke-width="1.9"
                 stroke-linecap="round" stroke-linejoin="round" />
+        </symbol>
+        <symbol id="icon-hdi" viewBox="0 0 24 24">
+            <path d="M4.8 18.2h14.4" fill="none" stroke="currentColor" stroke-width="1.7"
+                stroke-linecap="round" />
+            <path d="M7.2 15.9V9.3l4.8-3.6 4.8 3.6v6.6" fill="none" stroke="currentColor"
+                stroke-width="1.7" stroke-linejoin="round" />
+            <path d="M9.3 16v-4.7h5.4V16M10.2 9.5h3.6" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M6 6.3 4.2 4.5M18 6.3l1.8-1.8" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" />
         </symbol>
         <symbol id="icon-life" viewBox="0 0 24 24">
             <path d="M4 12h3.5l1.8-5.2 4.1 10.4 2.1-5.2H20" fill="none" stroke="currentColor"
@@ -110,7 +120,7 @@
                     </div>
                     <div>
                         <h1>Country Indicators Explorer</h1>
-                        <p>GDP, PPP, population, health, and growth signals</p>
+                        <p>GDP, PPP, HDI, population, health, and growth signals</p>
                     </div>
                 </div>
                 <div class="header-actions">
@@ -165,6 +175,10 @@
                         <button class="view-btn" data-view="ratio" id="viewRatio">
                             <svg class="btn-icon"><use href="#icon-pli"></use></svg>
                             Price Level Index
+                        </button>
+                        <button class="view-btn" data-view="hdi" id="viewHdi">
+                            <svg class="btn-icon"><use href="#icon-hdi"></use></svg>
+                            HDI
                         </button>
                         <button class="view-btn" data-view="life_expectancy" id="viewLifeExpectancy">
                             <svg class="btn-icon"><use href="#icon-life"></use></svg>
@@ -281,6 +295,14 @@
                     <div class="chart-header">
                         <h2 class="chart-title" id="chartTitle">GDP per Capita (Constant 2015 US$)</h2>
                         <div class="chart-actions">
+                            <select id="hdiMetricSelect" class="chart-metric-select is-hidden"
+                                title="Select HDI metric" aria-label="Select HDI metric">
+                                <option value="hdi">HDI</option>
+                                <option value="hdi_life_expectancy">Life Expectancy</option>
+                                <option value="hdi_expected_schooling">Expected Schooling</option>
+                                <option value="hdi_mean_schooling">Mean Schooling</option>
+                                <option value="hdi_gni_per_capita">GNI per Capita</option>
+                            </select>
                             <button class="action-btn" id="downloadChart" title="Download Chart">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -352,9 +374,9 @@
                                     <th data-sort="ppp" class="sortable" id="headerPpp">PPP per Capita <span
                                             class="sort-icon">↕</span>
                                     </th>
-                                    <th data-sort="ratio" class="sortable">Price Level Index (PLI) <span
+                                    <th data-sort="ratio" class="sortable" id="headerRatio">Price Level Index (PLI) <span
                                             class="sort-icon">↕</span></th>
-                                    <th data-sort="growth" class="sortable">Growth <span class="sort-icon">↕</span></th>
+                                    <th data-sort="growth" class="sortable" id="headerGrowth">Growth <span class="sort-icon">↕</span></th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -381,6 +403,11 @@
                                 <option value="gdp">GDP per Capita (USD)</option>
                                 <option value="ppp">PPP per Capita</option>
                                 <option value="ratio">Price Level Index</option>
+                                <option value="hdi">HDI</option>
+                                <option value="hdi_life_expectancy">HDI Life Expectancy</option>
+                                <option value="hdi_expected_schooling">HDI Expected Schooling</option>
+                                <option value="hdi_mean_schooling">HDI Mean Schooling</option>
+                                <option value="hdi_gni_per_capita">HDI GNI per Capita</option>
                                 <option value="life_expectancy">Life Expectancy</option>
                                 <option value="population">Population</option>
                                 <option value="growth">5-Year Growth</option>
@@ -443,8 +470,9 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Data Source: <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Development
-                    Indicators</a> | Last Updated: December 2025</p>
+            <p>Data Sources: <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Development
+                    Indicators</a> and <a href="https://hdr.undp.org/data-center/documentation-and-downloads"
+                    target="_blank" rel="noopener">UNDP Human Development Reports</a> | UNDP HDI data through 2023</p>
         </footer>
     </div>
 
@@ -452,11 +480,11 @@
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loader">
             <div class="loader-ring"></div>
-            <span>Loading Economic Data...</span>
+            <span>Loading Indicator Data...</span>
         </div>
     </div>
 
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
 </body>
 
 </html>
