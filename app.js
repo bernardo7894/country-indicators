@@ -65,6 +65,11 @@ const MAP_COLOR_RAMPS = {
     diverging: ['#b42318', '#d98f45', '#f2dfb1', '#7f8dbd', '#334e7c']
 };
 
+const MAP_WIDTH = 1000;
+const MAP_HEIGHT = 560;
+const MAP_SIMPLIFY_TOLERANCE = 1.8;
+const MAP_MIN_RING_SIZE = 1.1;
+
 const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
 const POPULATION_API_URL = 'https://api.worldbank.org/v2/country/all/indicator/SP.POP.TOTL?format=json&per_page=20000';
 
@@ -101,6 +106,12 @@ const state = {
     mapMetric: 'gdp',
     chart: null,
     geoData: null,
+    mapGeometry: null,
+    currentMap: null,
+    hoveredMapPath: null,
+    mapPointerFrame: null,
+    mapPointerPosition: null,
+    mapStyleColors: null,
     isPlaying: false,
     playInterval: null
 };
@@ -1463,23 +1474,19 @@ function renderMap() {
     const metric = state.mapMetric || 'gdp';
     document.getElementById('mapTitle').textContent = `${getMetricLabel(metric)} Map (${year})`;
 
-    // Clear and prepare
     svg.innerHTML = '';
+    svg.setAttribute('viewBox', `0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`);
+    state.hoveredMapPath = null;
+    state.mapPointerFrame = null;
+    state.mapPointerPosition = null;
+    state.mapStyleColors = getMapStyleColors();
 
-    const width = 1000;
-    const height = 560;
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-
-    const features = state.geoData.features.filter(isRenderableMapFeature);
-    const project = createEqualEarthProjector(features, width, height);
-    renderMapBackdrop(svg, width, height, project);
-
-    const countryCodeByName = new Map(
-        [...state.countryCodes]
-            .map(code => [code, state.gdpData[code]])
-            .filter(([, country]) => country?.name)
-            .map(([code, country]) => [normalizeCountryName(country.name), code])
-    );
+    const geometry = getPreparedMapGeometry();
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(createSvgPath(geometry.oceanPath, 'map-ocean-shape'));
+    geometry.graticulePaths.forEach(pathData => {
+        fragment.appendChild(createSvgPath(pathData, 'map-graticule'));
+    });
 
     const countryStats = buildMapCountryStats(year, metric);
     const statsByCode = new Map(countryStats.map(stat => [stat.code, stat]));
@@ -1492,102 +1499,172 @@ function renderMap() {
     const colorScale = createMapColorScale(values, metric);
     updateMapLegend(values, metric);
 
-    // Process GeoJSON features
-    features.forEach(feature => {
-        const countryName = feature.properties.name || feature.properties.ADMIN || 'Unknown';
+    state.currentMap = {
+        statsByCode,
+        rankMap,
+        year,
+        metric
+    };
 
-        // GeoJSON uses -99 for some sovereigns (e.g., France/Norway), so fallback by name.
-        const code = resolveFeatureCountryCode(feature, countryCodeByName);
+    geometry.countries.forEach(country => {
+        const { code, name, pathData } = country;
         const stat = statsByCode.get(code);
-        const gdpVal = stat?.gdp ?? null;
-        const pppVal = stat?.ppp ?? null;
-        const population = stat?.population ?? null;
         const metricValue = stat?.value ?? null;
-        const rank = rankMap[code];
-        const growth = stat?.growth ?? null;
-        const ratio = stat?.ratio ?? null;
-        const lifeExpectancy = stat?.lifeExpectancy ?? null;
 
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', generatePathData(feature.geometry, project));
+        path.setAttribute('d', pathData);
         path.setAttribute('fill', colorScale(metricValue));
         path.setAttribute('data-code', code || '');
+        path.setAttribute('data-name', name);
         path.setAttribute('fill-rule', 'evenodd');
         path.classList.add('map-country');
         path.style.cursor = code ? 'pointer' : 'default';
 
         applyMapPathStyle(path, code);
-
-        path.addEventListener('mouseenter', (e) => {
-            applyMapPathStyle(path, code, true);
-            tooltip.classList.add('visible');
-
-            const isSelected = code ? state.selectedCountries.includes(code) : false;
-            const displayName = code ? getEntityMeta(code).name : countryName;
-            tooltip.innerHTML = `
-                <div class="tooltip-header">
-                    <strong>${escapeHTML(displayName)}</strong>
-                    ${rank ? `<span class="tooltip-rank">#${rank}</span>` : ''}
-                </div>
-                <div class="tooltip-grid">
-                    <span class="tooltip-label">${escapeHTML(getMetricLabel(metric))}:</span>
-                    <span class="tooltip-value">${formatMetricValue(metricValue, metric)}</span>
-                    <span class="tooltip-label">GDP pc:</span>
-                    <span class="tooltip-value">${formatMetricValue(gdpVal, 'gdp')}</span>
-                    <span class="tooltip-label">PPP pc:</span>
-                    <span class="tooltip-value">${formatMetricValue(pppVal, 'ppp')}</span>
-                    <span class="tooltip-label">PLI:</span>
-                    <span class="tooltip-value">${ratio ? ratio.toFixed(3) : 'N/A'}</span>
-                    <span class="tooltip-label">Life:</span>
-                    <span class="tooltip-value">${formatMetricValue(lifeExpectancy, 'life_expectancy')}</span>
-                    <span class="tooltip-label">Population:</span>
-                    <span class="tooltip-value">${formatMetricValue(population, 'population', { compact: true })}</span>
-                    <span class="tooltip-label">5yr Growth:</span>
-                    <span class="tooltip-value ${growth !== null ? (growth >= 0 ? 'positive' : 'negative') : ''}">${growth !== null ? (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%' : 'N/A'}</span>
-                </div>
-                <div class="tooltip-hint">
-                    ${isSelected ? 'Click to remove from comparison' : 'Click to add to comparison'}
-                </div>
-            `;
-        });
-
-        path.addEventListener('mousemove', (e) => {
-            // Use clientX/clientY for fixed positioning (doesn't include scroll offset)
-            tooltip.style.left = (e.clientX + 15) + 'px';
-            tooltip.style.top = (e.clientY + 15) + 'px';
-        });
-
-        path.addEventListener('mouseleave', () => {
-            applyMapPathStyle(path, code);
-            tooltip.classList.remove('visible');
-        });
-
-        // Single click to toggle country selection (mobile-friendly)
-        path.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (!code) return;
-
-            if (state.selectedCountries.includes(code)) {
-                removeCountry(code);
-            } else {
-                state.selectedCountries.push(code);
-                updateCountryChips();
-                updateInsights();
-                updateDataTable();
-                renderMap();
-            }
-        });
-
-        // Prevent context menu on right-click
-        path.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-        });
-
-        svg.appendChild(path);
+        fragment.appendChild(path);
     });
 
-    // Update global rankings table
+    svg.appendChild(fragment);
+    setupMapPointerHandlers(svg, tooltip);
     updateGlobalRankings(countryStats);
+}
+
+function createSvgPath(pathData, className) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', pathData);
+    path.classList.add(className);
+    return path;
+}
+
+function setupMapPointerHandlers(svg, tooltip) {
+    if (svg.dataset.pointerHandlers === 'ready') return;
+
+    svg.addEventListener('pointerover', (e) => {
+        const path = e.target.closest?.('.map-country');
+        if (!path || path === state.hoveredMapPath) return;
+        if (state.hoveredMapPath) {
+            applyMapPathStyle(state.hoveredMapPath, state.hoveredMapPath.dataset.code);
+        }
+        state.hoveredMapPath = path;
+        showMapTooltip(path, tooltip, e);
+    });
+
+    svg.addEventListener('pointermove', (e) => {
+        if (!state.hoveredMapPath) return;
+        state.mapPointerPosition = { x: e.clientX, y: e.clientY };
+        if (state.mapPointerFrame) return;
+        state.mapPointerFrame = requestAnimationFrame(() => {
+            state.mapPointerFrame = null;
+            if (!state.mapPointerPosition) return;
+            tooltip.style.transform = `translate3d(${state.mapPointerPosition.x + 15}px, ${state.mapPointerPosition.y + 15}px, 0)`;
+        });
+    });
+
+    svg.addEventListener('pointerout', (e) => {
+        const path = e.target.closest?.('.map-country');
+        if (!path || path !== state.hoveredMapPath) return;
+        const relatedPath = e.relatedTarget?.closest?.('.map-country');
+        if (relatedPath === path) return;
+        applyMapPathStyle(path, path.dataset.code);
+        state.hoveredMapPath = null;
+        tooltip.classList.remove('visible');
+    });
+
+    svg.addEventListener('click', (e) => {
+        const path = e.target.closest?.('.map-country');
+        const code = path?.dataset?.code;
+        if (!code) return;
+        e.preventDefault();
+
+        if (state.selectedCountries.includes(code)) {
+            removeCountry(code);
+        } else {
+            state.selectedCountries.push(code);
+            updateCountryChips();
+            updateInsights();
+            updateDataTable();
+            renderMap();
+        }
+    });
+
+    svg.addEventListener('contextmenu', (e) => {
+        if (e.target.closest?.('.map-country')) e.preventDefault();
+    });
+
+    svg.dataset.pointerHandlers = 'ready';
+}
+
+function showMapTooltip(path, tooltip, event) {
+    const code = path.dataset.code;
+    const currentMap = state.currentMap;
+    const stat = currentMap?.statsByCode.get(code);
+    const rank = currentMap?.rankMap[code];
+    const metric = currentMap?.metric || state.mapMetric || 'gdp';
+    const isSelected = code ? state.selectedCountries.includes(code) : false;
+    const displayName = code ? getEntityMeta(code).name : path.dataset.name;
+
+    applyMapPathStyle(path, code, true);
+    tooltip.innerHTML = `
+        <div class="tooltip-header">
+            <strong>${escapeHTML(displayName)}</strong>
+            ${rank ? `<span class="tooltip-rank">#${rank}</span>` : ''}
+        </div>
+        <div class="tooltip-grid">
+            <span class="tooltip-label">${escapeHTML(getMetricLabel(metric))}:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.value, metric)}</span>
+            <span class="tooltip-label">GDP pc:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.gdp, 'gdp')}</span>
+            <span class="tooltip-label">PPP pc:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.ppp, 'ppp')}</span>
+            <span class="tooltip-label">PLI:</span>
+            <span class="tooltip-value">${stat?.ratio ? stat.ratio.toFixed(3) : 'N/A'}</span>
+            <span class="tooltip-label">Life:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.lifeExpectancy, 'life_expectancy')}</span>
+            <span class="tooltip-label">Population:</span>
+            <span class="tooltip-value">${formatMetricValue(stat?.population, 'population', { compact: true })}</span>
+            <span class="tooltip-label">5yr Growth:</span>
+            <span class="tooltip-value ${stat?.growth !== null && stat?.growth !== undefined ? (stat.growth >= 0 ? 'positive' : 'negative') : ''}">${stat?.growth !== null && stat?.growth !== undefined ? (stat.growth >= 0 ? '+' : '') + stat.growth.toFixed(1) + '%' : 'N/A'}</span>
+        </div>
+        <div class="tooltip-hint">
+            ${isSelected ? 'Click to remove from comparison' : 'Click to add to comparison'}
+        </div>
+    `;
+    tooltip.style.transform = `translate3d(${event.clientX + 15}px, ${event.clientY + 15}px, 0)`;
+    tooltip.classList.add('visible');
+}
+
+function getPreparedMapGeometry() {
+    if (state.mapGeometry) return state.mapGeometry;
+
+    const features = state.geoData.features.filter(isRenderableMapFeature);
+    const project = createEqualEarthProjector(features, MAP_WIDTH, MAP_HEIGHT);
+    const countryCodeByName = new Map(
+        [...state.countryCodes]
+            .map(code => [code, state.gdpData[code]])
+            .filter(([, country]) => country?.name)
+            .map(([code, country]) => [normalizeCountryName(country.name), code])
+    );
+    const backdrop = buildMapBackdropPaths(project);
+
+    const countries = features.map(feature => {
+        const featureName = feature.properties.name || feature.properties.ADMIN || 'Unknown';
+        const code = resolveFeatureCountryCode(feature, countryCodeByName);
+        const pathData = generatePathData(feature.geometry, project);
+        if (!pathData) return null;
+        return {
+            code,
+            name: code ? getEntityMeta(code).name : featureName,
+            pathData
+        };
+    }).filter(Boolean);
+
+    state.mapGeometry = {
+        countries,
+        oceanPath: backdrop.oceanPath,
+        graticulePaths: backdrop.graticulePaths
+    };
+
+    return state.mapGeometry;
 }
 
 function buildMapCountryStats(year, metric) {
@@ -1724,12 +1801,19 @@ function hexToRgb(hex) {
 
 function applyMapPathStyle(path, code, isHovered = false) {
     const selected = code ? state.selectedCountries.includes(code) : false;
-    const styles = getComputedStyle(document.documentElement);
-    const selectedColor = styles.getPropertyValue('--map-selected').trim() || '#c05621';
-    const defaultStroke = styles.getPropertyValue('--map-stroke').trim() || '#dde3da';
+    const colors = state.mapStyleColors || getMapStyleColors();
 
-    path.style.stroke = selected ? selectedColor : (isHovered ? '#ffffff' : defaultStroke);
+    path.style.stroke = selected ? colors.selected : (isHovered ? colors.hover : colors.stroke);
     path.style.strokeWidth = selected ? (isHovered ? '3' : '2') : (isHovered ? '1.5' : '0.55');
+}
+
+function getMapStyleColors() {
+    const styles = getComputedStyle(document.documentElement);
+    return {
+        selected: styles.getPropertyValue('--map-selected').trim() || '#c05621',
+        stroke: styles.getPropertyValue('--map-stroke').trim() || '#dedfe6',
+        hover: '#ffffff'
+    };
 }
 
 function isRenderableMapFeature(feature) {
@@ -1799,36 +1883,31 @@ function visitCoordinates(geometry, visitor) {
     }
 }
 
-function renderMapBackdrop(svg, width, height, project) {
+function buildMapBackdropPaths(project) {
     const boundary = [];
     for (let lon = -180; lon <= 180; lon += 5) boundary.push([lon, 84]);
     for (let lat = 84; lat >= -58; lat -= 5) boundary.push([180, lat]);
     for (let lon = 180; lon >= -180; lon -= 5) boundary.push([lon, -58]);
     for (let lat = -58; lat <= 84; lat += 5) boundary.push([-180, lat]);
 
-    const ocean = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    ocean.setAttribute('d', lineToPath(boundary, project, true));
-    ocean.classList.add('map-ocean-shape');
-    svg.appendChild(ocean);
+    const graticulePaths = [];
 
     for (let lon = -150; lon <= 180; lon += 30) {
         const line = [];
         for (let lat = -60; lat <= 80; lat += 4) line.push([lon, lat]);
-        appendGraticule(svg, lineToPath(line, project, false));
+        graticulePaths.push(lineToPath(line, project, false));
     }
 
     for (let lat = -60; lat <= 60; lat += 30) {
         const line = [];
         for (let lon = -180; lon <= 180; lon += 4) line.push([lon, lat]);
-        appendGraticule(svg, lineToPath(line, project, false));
+        graticulePaths.push(lineToPath(line, project, false));
     }
-}
 
-function appendGraticule(svg, d) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.classList.add('map-graticule');
-    svg.appendChild(path);
+    return {
+        oceanPath: lineToPath(boundary, project, true),
+        graticulePaths
+    };
 }
 
 function lineToPath(points, project, closePath = false) {
@@ -1843,14 +1922,140 @@ function lineToPath(points, project, closePath = false) {
 function generatePathData(geometry, project) {
     if (!geometry) return "";
 
-    const processRing = ring => lineToPath(ring, project, true);
+    const processRing = ring => {
+        const points = simplifyProjectedRing(projectRing(ring, project));
+        if (points.length < 3) return "";
+        return pointsToPath(points, true);
+    };
 
     if (geometry.type === "Polygon") {
-        return geometry.coordinates.map(processRing).join(" ");
+        return geometry.coordinates.map(processRing).filter(Boolean).join(" ");
     } else if (geometry.type === "MultiPolygon") {
-        return geometry.coordinates.map(polygon => polygon.map(processRing).join(" ")).join(" ");
+        return geometry.coordinates
+            .map(polygon => polygon.map(processRing).filter(Boolean).join(" "))
+            .filter(Boolean)
+            .join(" ");
     }
     return "";
+}
+
+function projectRing(ring, project) {
+    return ring.map(coords => project(coords));
+}
+
+function pointsToPath(points, closePath = false) {
+    return `M${points.map(point => `${point[0].toFixed(1)},${point[1].toFixed(1)}`).join('L')}${closePath ? 'Z' : ''}`;
+}
+
+function simplifyProjectedRing(points) {
+    if (points.length <= 4) return points;
+
+    const openPoints = removeClosingPoint(points);
+    if (openPoints.length <= 4 || isTinyRing(openPoints)) return openPoints;
+
+    const distancePruned = simplifyRadialDistance(openPoints, MAP_SIMPLIFY_TOLERANCE * MAP_SIMPLIFY_TOLERANCE);
+    const simplified = simplifyDouglasPeucker(distancePruned, MAP_SIMPLIFY_TOLERANCE * MAP_SIMPLIFY_TOLERANCE);
+    return simplified.length >= 3 ? simplified : openPoints;
+}
+
+function removeClosingPoint(points) {
+    const last = points[points.length - 1];
+    const first = points[0];
+    if (last && first && getSquaredDistance(first, last) < 0.01) {
+        return points.slice(0, -1);
+    }
+    return points;
+}
+
+function isTinyRing(points) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    points.forEach(([x, y]) => {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    });
+    return (maxX - minX) < MAP_MIN_RING_SIZE && (maxY - minY) < MAP_MIN_RING_SIZE;
+}
+
+function simplifyRadialDistance(points, sqTolerance) {
+    const simplified = [points[0]];
+    let previous = points[0];
+
+    for (let i = 1; i < points.length; i++) {
+        if (getSquaredDistance(points[i], previous) > sqTolerance) {
+            simplified.push(points[i]);
+            previous = points[i];
+        }
+    }
+
+    if (previous !== points[points.length - 1]) {
+        simplified.push(points[points.length - 1]);
+    }
+
+    return simplified;
+}
+
+function simplifyDouglasPeucker(points, sqTolerance) {
+    const length = points.length;
+    if (length <= 2) return points;
+
+    const markers = new Uint8Array(length);
+    const stack = [[0, length - 1]];
+    markers[0] = 1;
+    markers[length - 1] = 1;
+
+    while (stack.length) {
+        const [first, last] = stack.pop();
+        let maxSqDistance = 0;
+        let index = 0;
+
+        for (let i = first + 1; i < last; i++) {
+            const sqDistance = getSquaredSegmentDistance(points[i], points[first], points[last]);
+            if (sqDistance > maxSqDistance) {
+                index = i;
+                maxSqDistance = sqDistance;
+            }
+        }
+
+        if (maxSqDistance > sqTolerance) {
+            markers[index] = 1;
+            stack.push([first, index], [index, last]);
+        }
+    }
+
+    return points.filter((_, index) => markers[index]);
+}
+
+function getSquaredDistance(a, b) {
+    const dx = a[0] - b[0];
+    const dy = a[1] - b[1];
+    return dx * dx + dy * dy;
+}
+
+function getSquaredSegmentDistance(point, start, end) {
+    let x = start[0];
+    let y = start[1];
+    let dx = end[0] - x;
+    let dy = end[1] - y;
+
+    if (dx !== 0 || dy !== 0) {
+        const t = ((point[0] - x) * dx + (point[1] - y) * dy) / (dx * dx + dy * dy);
+        if (t > 1) {
+            x = end[0];
+            y = end[1];
+        } else if (t > 0) {
+            x += dx * t;
+            y += dy * t;
+        }
+    }
+
+    dx = point[0] - x;
+    dy = point[1] - y;
+    return dx * dx + dy * dy;
 }
 
 // ============================================
