@@ -20,8 +20,8 @@ const FILES = {
 };
 
 const COLORS = [
-    '#0f766e', '#b7791f', '#7c3aed', '#c2410c', '#be123c',
-    '#2563eb', '#4d7c0f', '#9333ea', '#0891b2', '#ca8a04'
+    '#b45309', '#4f46e5', '#be123c', '#2563eb', '#9333ea',
+    '#c2410c', '#0891b2', '#64748b', '#ca8a04', '#7c2d12'
 ];
 
 const DEFAULT_COUNTRY_CODES = ['USA', 'CHN', 'IND', 'DEU', 'BRA'];
@@ -59,10 +59,10 @@ const VIEW_LABELS = {
 };
 
 const MAP_COLOR_RAMPS = {
-    sequential: ['#f4efd0', '#d9be64', '#87a86e', '#3d887c', '#23516a'],
-    health: ['#f5e9cc', '#e2b664', '#b8794c', '#75656e', '#2f5b6c'],
-    population: ['#efe8d0', '#d4a95e', '#b67847', '#7f646a', '#31576f'],
-    diverging: ['#b42318', '#d98f45', '#f2dfb1', '#78a878', '#176b63']
+    sequential: ['#f5e6c8', '#d99a3d', '#c35d4a', '#7c5db6', '#334e7c'],
+    health: ['#f7e8c9', '#e2a451', '#c15a49', '#7556a8', '#30466f'],
+    population: ['#f1e2c8', '#d28b3f', '#b45a54', '#78609c', '#2f4d76'],
+    diverging: ['#b42318', '#d98f45', '#f2dfb1', '#7f8dbd', '#334e7c']
 };
 
 const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
@@ -1642,7 +1642,7 @@ function getMapMetricValue(code, year, metric, cached = {}) {
 }
 
 function createMapColorScale(values, metric) {
-    const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#e3e7df';
+    const noDataColor = getComputedStyle(document.documentElement).getPropertyValue('--map-no-data').trim() || '#e4e5eb';
     if (!values.length) return () => noDataColor;
 
     const ramp = metric === 'growth' ? MAP_COLOR_RAMPS.diverging :
